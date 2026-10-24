@@ -352,6 +352,11 @@
                   "key": "return_host",
                   "value": "",
                   "disabled": true
+                },
+                {
+                  "key": "prompt",
+                  "value": "",
+                  "disabled": true
                 }
               ]
             }
@@ -405,6 +410,11 @@
                 },
                 {
                   "key": "return_host",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "prompt",
                   "value": "",
                   "disabled": true
                 }
@@ -554,6 +564,42 @@
           }
         },
         {
+          "name": "Receive an OpenID Connect back-channel logout",
+          "request": {
+            "method": "POST",
+            "description": "The `backchannel_logout_uri` of Referalli's own sign-in client. Takes a form-encoded `logout_token` (OpenID Connect Back-Channel Logout 1.0): verified against the issuer's keys, `aud`, `events`, a fresh `iat`, no `nonce`, and a single-use `jti`; then ends the Referalli sessions for its `sid` (or every session of its `sub`). Answers 503 until the deployment sets IDP_LOGOUT_SYNC=true.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/backchannel-logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "backchannel-logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "Sign out",
           "request": {
             "method": "POST",
@@ -589,6 +635,218 @@
               "path": [
                 "v1",
                 "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start sign-in with an org's own identity provider",
+          "request": {
+            "method": "GET",
+            "description": "Team single sign-on with the merchant's OWN identity provider (OpenID Connect or WorkOS), no broker. `org` names the organization; sets the flow cookie and redirects (302) to its IdP. `link=1` from a signed-in user links the IdP identity to that user instead of creating an account (accounts are never linked by email). Problems redirect to `/login?error=`.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/sso/start?org=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "sso",
+                "start"
+              ],
+              "query": [
+                {
+                  "key": "org",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "next",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "login_hint",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "link",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start partner sign-in with the merchant's identity provider",
+          "request": {
+            "method": "GET",
+            "description": "Partner-portal sign-in through the merchant's own OpenID Connect IdP (portal sign-in adapter `oidc`). On the merchant's verified portal domain the flow runs on Referalli's host and is handed back. Problems redirect to `/portal/login?error=`.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal-auth/:orgId/oidc/start",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal-auth",
+                ":orgId",
+                "oidc",
+                "start"
+              ],
+              "query": [
+                {
+                  "key": "next",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "link",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "return_host",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Complete sign-in with an org's own identity provider",
+          "request": {
+            "method": "GET",
+            "description": "The redirect URI to register at the merchant's IdP, for team SSO and partner-portal OIDC. Verifies `state`, exchanges `code`, verifies the ID token (issuer, audience, nonce, asymmetric signature), resolves the identity `<adapter>:<issuer hash>:<sub>` and, for the team, sets the role the IdP's groups map to (never owner). Failures redirect to the login page with `?error=` (`sso_no_role`, `email_taken`, `invalid_token`…).\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/sso/callback",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "sso",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "code",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "error",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "error_description",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sign a partner in with the merchant's token",
+          "request": {
+            "method": "GET",
+            "description": "\"Bring your own session\" (portal sign-in adapter `custom`): the merchant's backend sends the partner's browser here with `token`, a JWT signed with an asymmetric key from its JWKS, `aud` `referalli:<orgId>`, its configured `iss`, `sub`, `email`, and `exp - iat` ≤ 300 s. Each token works once. Creates or finds the partner account by `jwt:<issuer hash>:<sub>` (never by email), links or enrolls the partner in the org, sets the session and redirects to `next` or `/portal`.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal-auth/:orgId/jwt",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal-auth",
+                ":orgId",
+                "jwt"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "link",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "What a merchant's portal sign-in offers",
+          "request": {
+            "method": "GET",
+            "description": "For the portal's sign-in page: the org (from `org`, or the merchant's portal domain this is called on) and its partner sign-in adapter, with the button label and where it starts. `referalli` with no start URL when the org uses Referalli partner accounts.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal-auth/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal-auth",
+                "current"
+              ],
+              "query": [
+                {
+                  "key": "org",
+                  "value": "",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -635,6 +893,28 @@
                   "value": "",
                   "disabled": true
                 }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get the support-chat identity",
+          "request": {
+            "method": "GET",
+            "description": "The signed-in merchant user or partner as a Chatly widget identity: `externalId` (`merchant:<id>` or `partner:<id>`), email, name and `userHash`, the HMAC-SHA256 of `externalId` with Referalli's identity secret. `identity` is null when signed out or when identity verification isn't configured. Never cached.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/chatly/identity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "chatly",
+                "identity"
               ]
             }
           }
@@ -704,6 +984,39 @@
               }
             }
           }
+        },
+        {
+          "name": "Close your own account",
+          "request": {
+            "method": "POST",
+            "description": "Closes the signed-in merchant user or partner account: every session ends, identity is redacted and commission records stay under a pseudonym. Send `confirm` with the account's email. Refused (409) for an organization's only owner or a partner still owed money. Step-up: `x-totp-code` when two-factor is on, otherwise a sign-in less than 15 minutes old (else 401 `step_up_required`).\n\n**Auth:** a partner session.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/account/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "account",
+                "close"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"confirm\": \"ada@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
         }
       ]
     },
@@ -740,6 +1053,78 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "Get partner sign-in settings",
+          "request": {
+            "method": "GET",
+            "description": "How partners sign in to the org's portal: `referalli` (partner accounts, the default), `oidc` (the merchant's IdP) or `custom` (the merchant's own session, as a short-lived JWT). Includes the audience tokens must carry, the URL to send partners to, the redirect URI to register, and the last check. Never the secret.\n\n**Auth:** an API key with `org:read` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/portal-auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "portal-auth"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set partner sign-in",
+          "request": {
+            "method": "PUT",
+            "description": "Chooses the portal sign-in adapter and its settings. `custom`: `issuer`, `jwksUrl` (https), optional `loginUrl` (your page that mints the token) and `autoEnrollProgramId`. `oidc`: `issuer`, `clientId`, `clientSecret`. `referalli` removes any configuration. Owner only.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/portal-auth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "portal-auth"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Test partner sign-in",
+          "request": {
+            "method": "POST",
+            "description": "Checks the partner sign-in configuration (JWKS reachable, or OIDC discovery) and records the result.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/portal-auth/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "portal-auth",
+                "test"
+              ]
             }
           }
         },
@@ -1619,6 +2004,81 @@
               ]
             }
           }
+        },
+        {
+          "name": "Connect your own identity provider",
+          "request": {
+            "method": "PUT",
+            "description": "Team SSO with the org's own IdP, no broker: `adapter` `oidc` (issuer, client id and secret, the claim that holds roles) or `workos` (client id, organization id, the org's own API key). `roleMapping` maps IdP groups or roles to `admin`, `finance`, `analyst` or `support` (never owner); `defaultRole` covers everyone else, or null to keep them out; `domains` are the email domains \"require SSO\" applies to. The secret is encrypted and never returned; leave it out to keep the stored one. 409 while the org uses the Atlas broker. Owner only.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/sso/direct",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "sso",
+                "direct"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remove your identity provider",
+          "request": {
+            "method": "DELETE",
+            "description": "Removes the org's own IdP configuration; team SSO and \"require SSO\" turn off, so nobody is locked out. Owner only.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/sso/direct",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "sso",
+                "direct"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Test your identity provider",
+          "request": {
+            "method": "POST",
+            "description": "Checks the configuration against the IdP (OIDC discovery, or the WorkOS organization) and records the result as the configuration's last success or last error.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/sso/direct/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "sso",
+                "direct",
+                "test"
+              ]
+            }
+          }
         }
       ]
     },
@@ -2377,6 +2837,67 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "Check integration health",
+          "request": {
+            "method": "GET",
+            "description": "Every connection the org depends on, each with `ok`, a `detail`, and when it fails a `fix` and `docs` link: billing connections (and when each last received an event), sign-up connections, the tracking snippet (a visit in the last 30 days), payout connections, outbound webhook endpoints, and every adapter of a connected port. `hop` names the leg that failed on a path between systems. `ok` at the top is true only when every check is.\n\n**Auth:** an API key with `integrations:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/integration-health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "integration-health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List past events",
+          "request": {
+            "method": "GET",
+            "description": "The org's events, oldest first, in the shape webhook deliveries carry: filter with `since` and `topics`, page with `after` (the previous page's `nextCursor`). Every event is listed whether or not an endpoint subscribed to it. `referalli events tail --since 1h` uses it to backfill before tailing live.\n\n**Auth:** an API key with `webhooks:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "since",
+                  "value": "",
+                  "description": "Only events created at or after this time.",
+                  "disabled": true
+                },
+                {
+                  "key": "topics",
+                  "value": "",
+                  "description": "Comma-separated topics (default: every topic).",
+                  "disabled": true
+                },
+                {
+                  "key": "after",
+                  "value": "",
+                  "description": "The `nextCursor` of the previous page: events after this one.",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "100",
+                  "disabled": true
+                }
+              ]
             }
           }
         },
@@ -3886,6 +4407,175 @@
               ]
             }
           }
+        },
+        {
+          "name": "Get referral context for a support contact",
+          "request": {
+            "method": "GET",
+            "description": "What a support agent should know about a contact: the partner (status, tier, programs, referral link, pending/approved/paid balances, next payout, open flags) and/or the referred customer (who referred them, when, the referee reward and what is left of it). Name the contact by `partnerExternalRef`, `ext` (a tool's verified external id), `customerRef` or `email`; the email is used only when no stronger key is given. Your org's data only; `partner` and `customer` are null when nothing matches.\n\n**Auth:** an API key with `partners:read` (or `full`), or a session with role `owner`, `admin`, `support`, `finance`, `analyst`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/context",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "context"
+              ],
+              "query": [
+                {
+                  "key": "email",
+                  "value": "",
+                  "description": "Used only when no stronger key is given.",
+                  "disabled": true
+                },
+                {
+                  "key": "customerRef",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "partnerExternalRef",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "ext",
+                  "value": "",
+                  "description": "A support tool's verified external id: matched as a partner externalRef, then as a customer ref.",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List support tool connections",
+          "request": {
+            "method": "GET",
+            "description": "Every support tool Referalli can show referral context in (Chatly cards and AI tools, Intercom, Zendesk, HubSpot, Front, Help Scout, custom), with its card URL, install steps and whether it is set up. Secrets are never returned.\n\n**Auth:** an API key with `partners:read` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/apps",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "apps"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Connect a support tool",
+          "request": {
+            "method": "PUT",
+            "description": "Enable a support tool and store its signing secret (vendor-issued; write-only) or, for Zendesk, the app public key in `config.publicKeyPem`. For `custom` Referalli mints the secret: it is returned once, and `rotate: true` mints a new one.\n\n**Auth:** an API key with `partners:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/apps/:adapter",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "apps",
+                ":adapter"
+              ],
+              "variable": [
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"secret\": \"cce_4Rk8pV2nQ7xZ1bT9sL5wH6yC0dF8eA3m\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Disconnect a support tool",
+          "request": {
+            "method": "DELETE",
+            "description": "Removes the tool and its secret; its card URL answers 404 from now on.\n\n**Auth:** an API key with `partners:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/apps/:adapter",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "apps",
+                ":adapter"
+              ],
+              "variable": [
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Preview a support card",
+          "request": {
+            "method": "POST",
+            "description": "Renders what the tool would show for a contact, from your own session: the context and the tool-format card. Nothing is sent to the tool.\n\n**Auth:** an API key with `partners:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/apps/:adapter/test",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "apps",
+                ":adapter",
+                "test"
+              ],
+              "variable": [
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
         }
       ]
     },
@@ -4127,6 +4817,14 @@
                 "t",
                 ":orgToken",
                 "aff.js"
+              ],
+              "query": [
+                {
+                  "key": "consent",
+                  "value": "",
+                  "description": "A consent adapter id (`onetrust`, `cookiebot`, `tcf`, …): defaults the tag to that CMP and inlines only its adapter, for a smaller script.",
+                  "disabled": true
+                }
               ],
               "variable": [
                 {
@@ -4509,6 +5207,56 @@
           }
         },
         {
+          "name": "Get the embed manifest",
+          "request": {
+            "method": "GET",
+            "description": "Every origin a Referalli embed touches (the tracking script, the partner widget), the storage it writes (`referalli_ctx` and its legacy twin, cookie and localStorage, category `referrals`), the consent adapters the tracker reads, and dated `changes` announced 30 days ahead. Follows the suite's embed-v1 schema, so a CMP can import the storage declarations and a site can build its CSP. Public, CORS `*`, cached an hour.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/forgedeck-embed.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ".well-known",
+                "forgedeck-embed.json"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get one org's embed manifest",
+          "request": {
+            "method": "GET",
+            "description": "The embed manifest for the org that owns `token` (its public tracking token): its link domain in the CSP origins, its longest program cookie window as the storage lifetime, and its consent default. Public, CORS `*`.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/embed?token=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "embed"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "",
+                  "description": "The org's public tracking token.",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Record a customer's consent",
           "request": {
             "method": "POST",
@@ -4635,6 +5383,110 @@
                 "embed",
                 "summary"
               ]
+            }
+          }
+        },
+        {
+          "name": "Get consent coverage",
+          "request": {
+            "method": "GET",
+            "description": "The share of attributed sign-ups in the last `days` (default 30) whose referral carries consent evidence, on its click or on the `associate` call. Low coverage means sign-ups are attributed from tags without a consent setting (`none`) or from server-side calls that don't pass `consent`.\n\n**Auth:** an API key with `links:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/clicks/consent-coverage",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "clicks",
+                "consent-coverage"
+              ],
+              "query": [
+                {
+                  "key": "days",
+                  "value": "30",
+                  "description": "Look-back window in days.",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get a click",
+          "request": {
+            "method": "GET",
+            "description": "One click with its consent evidence: what the visitor's CMP said when the tracker stored the referral (`consent.provider`, `state`, `stamp`, `tcString`…). A redirect click (`/go`) is recorded before the landing page reads the CMP, so its evidence comes from the first consented visit beacon naming it. `consent` is null when none arrived.\n\n**Auth:** an API key with `links:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/clicks/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "clicks",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get the tracker's consent default",
+          "request": {
+            "method": "GET",
+            "description": "How `aff.js` reads visitor consent unless the tag says otherwise (`data-consent`): `auto` detects the site's CMP (Cookie Munch, OneTrust, Cookiebot, Usercentrics, Didomi, Osano, Termly, IAB TCF and GPP, Google Consent Mode, or `window.referalliConsent`), an adapter id pins one, `pending` waits for `aff.consent(true|false)`, and `none` always stores. Until consent is granted nothing is stored or sent; the referral stays in memory for the sign-up. `noCmp` is what `auto` does on a site without a CMP. `configured: false` is an org that never chose: it serves `none`, so existing tags behave as before. Lists the adapters with their default category.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/tracking-consent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "tracking-consent"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set the tracker's consent default",
+          "request": {
+            "method": "PUT",
+            "description": "Sets the consent default served inside `/t/{token}/aff.js` (cached up to 5 minutes). Owner or admin. Audited.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/tracking-consent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "tracking-consent"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mode\": \"auto\",\n  \"noCmp\": \"persist\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         },
@@ -5653,6 +6505,38 @@
           }
         },
         {
+          "name": "Reward a partner",
+          "request": {
+            "method": "POST",
+            "description": "Rewards a partner for something outside a sale (a community answer, an event): one `earned` commission line that is approved and paid like any other. Name the partner by `partnerId` or `partnerExternalRef`; the amount is `amountMinor` (+ `currency`) or comes from a rule (`ruleKey`, or the `event` a rule maps). Idempotent on `idempotencyKey`: a retry returns the first grant with 200; the same key with a different request is 409.\n\n**Auth:** an API key with `commissions:write` (or `full`), or a session with role `owner`, `admin`, `finance`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rewards",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rewards"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"partnerExternalRef\": \"user_42\",\n  \"reason\": \"Accepted answer in the community\",\n  \"ruleKey\": \"community-answer\",\n  \"idempotencyKey\": \"topic-981-solved\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "Look up a reward code",
           "request": {
             "method": "GET",
@@ -5750,6 +6634,110 @@
               }
             }
           }
+        },
+        {
+          "name": "List partner rewards",
+          "request": {
+            "method": "GET",
+            "description": "The last 200 rewards granted through `POST /v1/rewards`, with the commission line each one posted.\n\n**Auth:** an API key with `commissions:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rewards/granted",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rewards",
+                "granted"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List reward rules",
+          "request": {
+            "method": "GET",
+            "description": "Your rules that turn an inbound event (or a rule key) into a fixed partner reward.\n\n**Auth:** an API key with `commissions:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rewards/rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rewards",
+                "rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Save a reward rule",
+          "request": {
+            "method": "PUT",
+            "description": "Creates or replaces a rule: the amount, the reason, an optional program and an optional `event` it rewards (one rule per event).\n\n**Auth:** an API key with `commissions:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rewards/rules/:key",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rewards",
+                "rules",
+                ":key"
+              ],
+              "variable": [
+                {
+                  "key": "key",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event\": \"community.answer_accepted\",\n  \"amountMinor\": 500,\n  \"currency\": \"usd\",\n  \"reason\": \"Accepted community answer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete a reward rule",
+          "request": {
+            "method": "DELETE",
+            "description": "Deletes the rule. Rewards already granted through it stay.\n\n**Auth:** an API key with `commissions:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/rewards/rules/:key",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "rewards",
+                "rules",
+                ":key"
+              ],
+              "variable": [
+                {
+                  "key": "key",
+                  "value": ""
+                }
+              ]
+            }
+          }
         }
       ]
     },
@@ -5794,7 +6782,7 @@
           "name": "Create a billing connection",
           "request": {
             "method": "POST",
-            "description": "Connects a billing provider (`stripe`, `paddle`, `lemonsqueezy`, `polar`, `chargebee`, `shopify`, `recurly`, `braintree`, `woocommerce`, `bigcommerce` or `generic`) so its payment webhooks become commissions. Returns the `webhookUrl` path to register with the provider and its signing secret (generated unless you pass the provider's own `webhookSecret`); the secret is returned only here. Audited.\n\n**Auth:** an API key with `billing:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Connects a billing provider (`stripe`, `paddle`, `lemonsqueezy`, `polar`, `chargebee`, `shopify`, `recurly`, `braintree`, `woocommerce`, `bigcommerce` or `generic`) so its payment webhooks become commissions. Returns the `webhookUrl` path to register with the provider and its signing secret (generated unless you pass the provider's own `webhookSecret`); the secret is returned only here. A `filter` (`productIds`, `priceIds`, `skus` and/or exact `metadata`) limits which payments and subscription events earn when one provider account sells several products; the rest are recorded as `ignored_by_filter`. Audited.\n\n**Auth:** an API key with `billing:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -5814,7 +6802,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"provider\": \"stripe\",\n  \"name\": \"Stripe live\"\n}",
+              "raw": "{\n  \"provider\": \"stripe\",\n  \"name\": \"Stripe live\",\n  \"filter\": {\n    \"productIds\": [\n      \"prod_QconfPro\"\n    ]\n  }\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5986,7 +6974,7 @@
           "name": "Update a billing connection",
           "request": {
             "method": "PATCH",
-            "description": "Renames a connection or sets `status`: `paused` makes its webhook URL refuse events until set back to `active`. Audited.\n\n**Auth:** an API key with `billing:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Renames a connection, sets `status` (`paused` makes its webhook URL refuse events until set back to `active`), or sets its product `filter` (`null` removes it). A filter applies to events received from then on. Audited.\n\n**Auth:** an API key with `billing:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -6162,7 +7150,7 @@
           "name": "List billing events",
           "request": {
             "method": "GET",
-            "description": "Payments, refunds and other billing events received from every connection, newest first. Filter with `customerRef`.\n\n**Auth:** an API key with `billing:read` (or `full`), or a session of any role.",
+            "description": "Payments, refunds and other billing events received from every connection, newest first. Filter with `customerRef`, or `status=ignored_by_filter` for the events a product filter or the internal-customer list set aside (recorded, never processed).\n\n**Auth:** an API key with `billing:read` (or `full`), or a session of any role.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/billing/events",
@@ -6177,6 +7165,11 @@
               "query": [
                 {
                   "key": "customerRef",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "status",
                   "value": "",
                   "disabled": true
                 },
@@ -6209,6 +7202,84 @@
                   "value": "",
                   "description": "Only items created at or before this time (ISO 8601), on lists of timestamped records. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
                   "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List internal customers",
+          "request": {
+            "method": "GET",
+            "description": "The org's own customers (staff, test accounts, your own plans) whose payments never earn on any connection. Metadata `planSource: \"internal\"` on the provider's customer does the same without a list.\n\n**Auth:** an API key with `billing:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/internal-customers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "internal-customers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add an internal customer",
+          "request": {
+            "method": "POST",
+            "description": "Marks a customer ref (the provider customer id, or the `referalli_customer_ref` it is linked to) as internal: its payments are recorded as `ignored_by_filter` from now on. Idempotent; a repeat updates the note. Audited.\n\n**Auth:** an API key with `billing:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/internal-customers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "internal-customers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerRef\": \"cus_QstaffAccount\",\n  \"note\": \"Our own team plan\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remove an internal customer",
+          "request": {
+            "method": "DELETE",
+            "description": "Their payments earn again from now on (events already ignored stay ignored). Audited.\n\n**Auth:** an API key with `billing:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/internal-customers/:customerRef",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "internal-customers",
+                ":customerRef"
+              ],
+              "variable": [
+                {
+                  "key": "customerRef",
+                  "value": ""
                 }
               ]
             }
@@ -8992,7 +10063,7 @@
           "name": "Create a webhook endpoint",
           "request": {
             "method": "POST",
-            "description": "Subscribes an HTTPS URL to event topics (default `[\"*\"]`, every event; see the `webhooks` section of this document for each topic's payload). `programIds` limits it to events about those programs (org-wide events such as payouts are then not sent). Deliveries are signed the Standard Webhooks way with the returned `secret` (`whsec_…`), shown only here. `legacySignature: true` also sends the deprecated body-only signature.\n\n**Auth:** an API key with `webhooks:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Subscribes an HTTPS URL to event topics (default `[\"*\"]`, every event; see the `webhooks` section of this document for each topic's payload). `programIds` limits it to events about those programs (org-wide events such as payouts are then not sent). Deliveries are signed the Standard Webhooks way with the returned `secret` (`whsec_…`), shown only here. `legacySignature: true` also sends the deprecated body-only signature. `alertContacts` (up to 10 emails) are emailed, with the org owner, when the endpoint has failed for 1 hour and again at 24 hours; it is disabled after 72 hours of failures or 1,000 failed attempts in a row.\n\n**Auth:** an API key with `webhooks:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -9074,7 +10145,7 @@
           "name": "Update a webhook endpoint",
           "request": {
             "method": "PATCH",
-            "description": "Changes the URL, topics, programs (`null` or `[]` for every program) or legacy signature, or pauses it (`status: \"paused\"`, deliveries held). Setting `active` re-enables a paused or auto-disabled endpoint: held deliveries resume and the failure clock starts over. Audited.\n\n**Auth:** an API key with `webhooks:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Changes the URL, topics, programs (`null` or `[]` for every program) or legacy signature, or pauses it (`status: \"paused\"`, deliveries held). Setting `active` re-enables a paused or auto-disabled endpoint: held deliveries resume and the failure clock starts over. `warnings` has `domain_changed` when the URL moves to another host. Audited.\n\n**Auth:** an API key with `webhooks:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -9314,6 +10385,40 @@
                 "v1",
                 "webhook-deliveries",
                 ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Replay failed deliveries",
+          "request": {
+            "method": "POST",
+            "description": "Requeues the endpoint's failed deliveries created at or after `since` (ISO 8601), for after an outage. Each keeps its `webhook-id`, so receivers can dedupe. Audited.\n\n**Auth:** an API key with `webhooks:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/webhook-endpoints/:id/replay?since=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "webhook-endpoints",
+                ":id",
+                "replay"
+              ],
+              "query": [
+                {
+                  "key": "since",
+                  "value": "",
+                  "description": "Requeue failed deliveries created at or after this time.",
+                  "disabled": false
+                }
               ],
               "variable": [
                 {
@@ -9910,6 +11015,67 @@
           }
         },
         {
+          "name": "List identity connectors",
+          "request": {
+            "method": "GET",
+            "description": "Every auth provider you can connect (Atlas, Clerk, Auth0, Supabase, Firebase, Cognito, Stytch, Kinde, WorkOS, generic, your own auth), with how it connects, who issues the secret, the setup steps, a copyable template where the vendor has no native webhook, and where the referral metadata lands.\n\n**Auth:** an API key with `integrations:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/providers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                "providers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set a vendor-issued secret",
+          "request": {
+            "method": "PUT",
+            "description": "For webhook connectors whose vendor issues the signing secret (Clerk, Stytch, WorkOS) or key set (Kinde's JWKS document): replaces the connection's secret. The previous one keeps verifying for 24 hours. Signed-protocol connections rotate instead. Audited.\n\n**Auth:** an API key with `integrations:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id/secret",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id",
+                "secret"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"secret\": \"whsec_c2VjcmV0LWZyb20tdGhlLXZlbmRvcg==\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "Rotate an auth connection secret",
           "request": {
             "method": "POST",
@@ -10065,6 +11231,50 @@
             "body": {
               "mode": "raw",
               "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Enrol a user as a partner (signed protocol)",
+          "request": {
+            "method": "POST",
+            "description": "A user asked to become a partner from the platform, with the code they chose: they are enrolled now (whatever `autoEnrollUsers` says), with a coupon and, when the connection has a destination, a link. 409 when the code is held by someone else. Signed like the other protocol calls (`x-referalli-signature`, `x-referalli-id`).\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id/partners",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id",
+                "partners"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customerRef\": \"usr_8f2k\",\n  \"email\": \"dana@example.com\",\n  \"name\": \"Dana\",\n  \"code\": \"DANA\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10317,6 +11527,140 @@
                   "key": "id",
                   "value": ""
                 }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Approve a one-click install",
+          "request": {
+            "method": "POST",
+            "description": "The dashboard's consent step for `GET /v1/oauth/authorize`: `allow` returns the redirect back to the platform with a single-use code (10 minutes) for the chosen program; `deny` returns it with `error=access_denied`. Owner or admin. Audited.\n\n**Auth:** an API key with `integrations:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/install",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                "install"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": \"atlas\",\n  \"scope\": \"connections:write\",\n  \"redirectUri\": \"https://quiet-eagle-14.atlasauth.net/integrations/referalli/callback\",\n  \"state\": \"st_9b1\",\n  \"codeChallenge\": \"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM\",\n  \"instanceId\": \"ins_01M4W94N0Z5BEKZ0XN9FYE2F94\",\n  \"decision\": \"allow\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Start a one-click install",
+          "request": {
+            "method": "GET",
+            "description": "An auth platform (`client_id=atlas`, `scope=connections:write`) sends the merchant here with its https `redirect_uri`, `state`, a PKCE `code_challenge` (`S256`) and its `instance_id`. Referalli checks them and redirects to the dashboard consent page. No authentication.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/oauth/authorize?client_id=&scope=&redirect_uri=&code_challenge=&code_challenge_method=&instance_id=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "oauth",
+                "authorize"
+              ],
+              "query": [
+                {
+                  "key": "client_id",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "scope",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "redirect_uri",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "state",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "response_type",
+                  "value": "code",
+                  "disabled": true
+                },
+                {
+                  "key": "code_challenge",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "code_challenge_method",
+                  "value": "",
+                  "disabled": false
+                },
+                {
+                  "key": "instance_id",
+                  "value": "",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Exchange an install code",
+          "request": {
+            "method": "POST",
+            "description": "Server to server: the platform trades the single-use code and its PKCE `code_verifier` for a new signed-protocol connection and its signing secret (returned only here). Installing again for the same instance keeps the connection and issues a new secret, the old one verifying for 24 hours. 401 for an unknown, used, expired or mismatched code. No authentication.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/oauth/token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "oauth",
+                "token"
               ]
             },
             "body": {
@@ -11178,7 +12522,7 @@
           "name": "Get branding",
           "request": {
             "method": "GET",
-            "description": "The org's logo, theme tokens, sender address, and its custom portal and link domains with their status (`none`, `pending` DNS, `provisioning` a certificate, `active`).\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "description": "The org's logo, theme tokens, sender address, and its custom portal and link domains with their status (`none`, `pending` DNS, `provisioning` a certificate, `active`), and `warnings` for theme colour pairs below WCAG AA contrast.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/branding",
@@ -11196,7 +12540,7 @@
           "name": "Update branding",
           "request": {
             "method": "PUT",
-            "description": "Sets the logo URL, theme (only the documented `--r-*` tokens, with plain CSS values) and email sender. Omitted fields keep their value.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Sets the logo URL, theme (only the documented `--r-*` tokens, with plain CSS values) and email sender. Omitted fields keep their value. `warnings` lists theme text/background pairs (`--r-accent-ink` on `--r-accent`, `--r-ink` on `--r-paper`) below the 4.5:1 WCAG AA contrast; the theme is saved anyway.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -11364,6 +12708,78 @@
                 "branding",
                 "domain",
                 "verify"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get the hosted-page consent and chat",
+          "request": {
+            "method": "GET",
+            "description": "What runs on the pages Referalli hosts for you on your own portal domain (the partner portal and `/join`): your consent banner (Cookie Munch, OneTrust, Cookiebot, Usercentrics, Didomi, Osano, Termly, iubenda, a custom CMP, a built-in necessary-only notice, or none) and your support chat (Chatly, Intercom, Crisp or custom). `served` is exactly what visitors get: the head tags, the \"Cookie settings\" link and the Content-Security-Policy built from these adapters. Referalli's own banner and chat never run on your domain.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/hosted-pages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "hosted-pages"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set the hosted-page consent and chat",
+          "request": {
+            "method": "PUT",
+            "description": "Validates and saves the adapters. A CMP's `scriptUrl` must be https on that vendor's own hosts; `custom` needs every origin listed. `customOrigins` adds origins per CSP directive (https or wss, no wildcards, no keywords). Owner or admin. Audited.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/hosted-pages",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "hosted-pages"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent\": {\n    \"adapter\": \"onetrust\",\n    \"config\": {\n      \"scriptUrl\": \"https://cdn.cookielaw.org/scripttemplates/otSDKStub.js\",\n      \"attrs\": {\n        \"data-domain-script\": \"0190-abcd-ef01\"\n      }\n    }\n  },\n  \"chat\": {\n    \"adapter\": \"intercom\",\n    \"config\": {\n      \"appId\": \"abc123xy\",\n      \"region\": \"eu\"\n    }\n  },\n  \"customOrigins\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Check the hosted-page adapters",
+          "request": {
+            "method": "POST",
+            "description": "Read-only checks against the vendors: does the Cookie Munch site exist (and a reminder to add your portal domain as its alias), does each script URL answer. Updates `status` and `lastError`. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/hosted-pages/check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "hosted-pages",
+                "check"
               ]
             }
           }
@@ -11704,6 +13120,130 @@
               ]
             }
           }
+        },
+        {
+          "name": "List connected DSAR tools",
+          "request": {
+            "method": "GET",
+            "description": "Every DSAR tool that can reach Referalli as a connected system (Cookie Munch cm-standard-v1, OneTrust, Transcend, DataGrail, Ketch, Osano, `custom` for any tool speaking Standard Webhooks), with the per-org URL to register, install steps and a health check. Keys are never returned.\n\n**Auth:** an API key with `privacy:read` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/privacy/executors",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "privacy",
+                "executors"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mint a DSAR executor key",
+          "request": {
+            "method": "POST",
+            "description": "Enables a DSAR tool for your org and mints its executor key (a bearer key, or a `whsec_` secret for Standard Webhooks), returned once. Rotating stops the old key at once. Also stores vendor settings: a Transcend public key and API key for completion callbacks, an Osano webhook secret.\n\n**Auth:** an API key with `privacy:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/privacy/executor-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "privacy",
+                "executor-keys"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"adapter\": \"onetrust\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Disconnect a DSAR tool",
+          "request": {
+            "method": "DELETE",
+            "description": "Removes the tool, its key and settings; its URL answers 404 from now on. The request log stays.\n\n**Auth:** an API key with `privacy:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/privacy/executors/:adapter",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "privacy",
+                "executors",
+                ":adapter"
+              ],
+              "variable": [
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check a DSAR tool connection",
+          "request": {
+            "method": "POST",
+            "description": "Whether the tool is ready: a key or the vendor credentials it needs, and no failing requests since it was set up. Answers `{ok, detail, fix}`.\n\n**Auth:** an API key with `privacy:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/privacy/executors/:adapter/check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "privacy",
+                "executors",
+                ":adapter",
+                "check"
+              ],
+              "variable": [
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "List DSAR tool requests",
+          "request": {
+            "method": "GET",
+            "description": "The last 200 requests connected DSAR tools sent: operation, outcome and the vendor request id. Subjects are kept only as hashes.\n\n**Auth:** an API key with `privacy:read` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/privacy/executor-requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "privacy",
+                "executor-requests"
+              ]
+            }
+          }
         }
       ]
     },
@@ -11812,6 +13352,27 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "List public plans",
+          "request": {
+            "method": "GET",
+            "description": "The public plan catalog in display order: monthly price in minor units (USD, billed monthly in advance), limits and features. No authentication; cacheable for an hour. No plan charges a transaction or payout fee.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/plans",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "plans"
+              ]
             }
           }
         }
@@ -14208,6 +15769,100 @@
       "description": "Provider-facing receivers outside `/v1`, each verified with its own signature scheme.",
       "item": [
         {
+          "name": "Render a support card for a tool",
+          "request": {
+            "method": "POST",
+            "description": "Called by the support tool, signed in its own scheme (Chatly `x-chatly-signature`, Intercom `X-Body-Signature`, HubSpot v3, Front, Help Scout, a Zendesk app JWT, or the custom `X-Referalli-Signature`). Answers the tool's card format. An unknown org, a tool that is not connected, or a bad or stale signature all answer 404.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/cards/:orgId/:adapter",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "cards",
+                ":orgId",
+                ":adapter"
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                },
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Render a support card for a tool (GET)",
+          "request": {
+            "method": "GET",
+            "description": "The same card for tools that fetch with GET (HubSpot legacy CRM cards pass the contact as query parameters). Signed as for the POST form; 404 otherwise.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/cards/:orgId/:adapter",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "cards",
+                ":orgId",
+                ":adapter"
+              ],
+              "query": [
+                {
+                  "key": "email",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "externalId",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                },
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Receive a billing provider webhook",
           "request": {
             "method": "POST",
@@ -14358,7 +16013,7 @@
           "name": "Receive payout settlement webhooks",
           "request": {
             "method": "POST",
-            "description": "Settlement outcomes from payout providers (PayPal, Circle, Wise, and others), signed in `x-payout-signature: sha256=<hex HMAC>`: settled payouts are marked sent, failed ones failed, with the matching `payout.*` event. Unrecognized events are acknowledged and ignored. `503 webhooks_disabled` when the deployment has no payout webhook secret.\n\n**Auth:** a signature (see above); no API key.",
+            "description": "Settlement outcomes from payout providers (PayPal, Circle, Wise, and others), signed in `x-payout-signature: t=<unix seconds>,v1=<hex HMAC of \"{t}.{body}\">` (300 s window; the old `sha256=<hex HMAC>` form until 2027-01-31): settled payouts are marked sent, failed ones failed, with the matching `payout.*` event. Unrecognized events are acknowledged and ignored. `503 webhooks_disabled` when the deployment has no payout webhook secret.\n\n**Auth:** a signature (see above); no API key.",
             "header": [],
             "auth": {
               "type": "noauth"
@@ -14400,6 +16055,279 @@
                 "webhooks",
                 "stripe-billing"
               ]
+            }
+          }
+        },
+        {
+          "name": "Find a Referalli account for a data-rights request",
+          "request": {
+            "method": "POST",
+            "description": "Called by Cookie Munch, which runs Referalli's own data-rights requests (Referalli as the controller for its merchant users and partner accounts). Bearer `REFERALLI_PRIVACY_KEY`; without it, or with a wrong one, the route answers 404 as if absent. Always 200: `{subjectId, status: \"found\"}` or `{subjectId: null, status: \"no_match\"}`. Answers carry `X-Version`.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/lookup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "lookup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Open an access or deletion request",
+          "request": {
+            "method": "POST",
+            "description": "`{subjectId, type: access|deletion}` from the lookup. Access is `completed` at once (the export is built when polled). Deletion is `pending` until the sign-in provider's erasure grace period ends (`eta`), or `rejected` with a `detail` when it can't run safely (the account is an organization's only owner, or commissions are still owed). An `Idempotency-Key` retry gets the first answer.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "requests"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Poll a data-rights request",
+          "request": {
+            "method": "GET",
+            "description": "The request status: `pending`, `completed` (with the export inline as `result` for access), `no_match` or `rejected`. A deletion past its `eta` is carried out on this call. Ids are signed; a forged one is 404.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/requests/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "requests",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Find a data subject in a merchant's program",
+          "request": {
+            "method": "POST",
+            "description": "Cookie Munch cm-standard-v1 executor for one merchant org: bearer executor key from `POST /v1/privacy/executor-keys`; without it, or with a wrong one, 404. Always 200: `{subjectId, status: \"found\"}` when a referred customer (by email hash) or partner matches, else `{subjectId: null, status: \"no_match\"}`.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/orgs/:orgId/lookup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "orgs",
+                ":orgId",
+                "lookup"
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Open a data-subject request in a merchant's program",
+          "request": {
+            "method": "POST",
+            "description": "`{subjectId, type: access|deletion}`. Runs at once: access is `completed`; deletion is `completed` (identity redacted, commission amounts kept as financial records, said in `detail`) or `rejected` with a reason (a partner still owed money). An `Idempotency-Key` retry gets the first answer.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/orgs/:orgId/requests",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "orgs",
+                ":orgId",
+                "requests"
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Poll a data-subject request in a merchant's program",
+          "request": {
+            "method": "GET",
+            "description": "The request status, with the export inline as `result` for an access request (rebuilt on every poll, never stored). Unknown ids are 404.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/orgs/:orgId/requests/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "orgs",
+                ":orgId",
+                "requests",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                },
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Run a vendor DSAR request in a merchant's program",
+          "request": {
+            "method": "POST",
+            "description": "Called by the merchant's DSAR tool (OneTrust, Transcend, DataGrail, Ketch, Osano or `custom` Standard Webhooks), verified in that vendor's scheme; unsigned or stale requests answer 404. Lookup, access, deletion, status and cancel run in the org's own data, idempotent on the vendor's request id, and answer in the vendor's shape; Transcend and Ketch also get the outcome pushed back.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/orgs/:orgId/dsar/:adapter",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "orgs",
+                ":orgId",
+                "dsar",
+                ":adapter"
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                },
+                {
+                  "key": "adapter",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         }
