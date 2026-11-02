@@ -2099,6 +2099,20 @@
               }
             ]
           },
+          "providerWebhookIds": {
+            "description": "The provider webhooks Referalli registered with `autoRegister` (one per topic for Shopify, BigCommerce, WooCommerce; Stripe's endpoint too). null when set up by hand.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "rotation": {
             "type": "object",
             "properties": {
@@ -2195,8 +2209,22 @@
             "description": "With `stripeKey`: the Stripe webhook endpoint (`we_…`) registered or reused.",
             "type": "string"
           },
+          "providerWebhookIds": {
+            "description": "With `autoRegister` (not Stripe): the provider webhooks registered or reused.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skippedEvents": {
+            "description": "With `autoRegister`: optional events the credentials could not subscribe (Shopify `DISPUTES_CREATE` without the `read_shopify_payments_disputes` scope); everything else was registered.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "reused": {
-            "description": "With `stripeKey`: true when an endpoint on the account already pointed at one of your Stripe connections, which is returned instead of a new one.",
+            "description": "With `stripeKey` or `autoRegister`: true when webhooks on the account already pointed at one of your connections for this provider, which is returned instead of a new one.",
             "type": "boolean"
           }
         },
@@ -2292,14 +2320,16 @@
                 "enum": [
                   "filter",
                   "internal_customer",
-                  "no_referral_in_scope"
+                  "no_referral_in_scope",
+                  "identity_unresolved",
+                  "identity_ambiguous"
                 ]
               },
               {
                 "type": "null"
               }
             ],
-            "description": "Why it earned nothing. no_referral_in_scope (status processed): the customer is referred only in programs outside the connection's programIds."
+            "description": "Why it earned nothing. no_referral_in_scope (status processed): the customer is referred only in programs outside the connection's programIds. identity_unresolved / identity_ambiguous (status processed): the customer had no customerRef and an auth connection with resolveBillingCustomers matched no user, or several."
           },
           "catalog": {
             "anyOf": [
@@ -3989,6 +4019,121 @@
           "revokedAt"
         ]
       },
+      "TokenVerification": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "preset": {
+                "type": "string"
+              },
+              "tenant": {
+                "type": "string"
+              },
+              "issuer": {
+                "type": "string"
+              },
+              "keyType": {
+                "type": "string",
+                "enum": [
+                  "jwks",
+                  "hs256"
+                ],
+                "description": "hs256: verified with the sealed shared secret, which is never returned."
+              },
+              "jwksUrl": {
+                "type": "string"
+              },
+              "audience": {
+                "description": "Checked when set; with none, the token audience is not checked.",
+                "type": "string"
+              },
+              "maxAgeS": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "claims": {
+                "type": "object",
+                "properties": {
+                  "customerRef": {
+                    "type": "string"
+                  },
+                  "email": {
+                    "type": "string"
+                  },
+                  "emailVerified": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "required": [
+              "issuer",
+              "keyType"
+            ]
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "description": "How POST /v1/widget/session verifies the end user's session JWT; null when not set."
+      },
+      "WidgetSession": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "partner": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "code": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "linkUrl": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Their tracked link; null when they have only a coupon."
+              }
+            },
+            "required": [
+              "id",
+              "code",
+              "linkUrl"
+            ]
+          }
+        },
+        "required": [
+          "token",
+          "expiresAt",
+          "partner"
+        ]
+      },
       "AuthConnection": {
         "type": "object",
         "properties": {
@@ -4071,6 +4216,10 @@
               }
             ]
           },
+          "resolveBillingCustomers": {
+            "description": "Billing customers that arrive with no customerRef are resolved through this connection's users (a user-id metadata key, else exactly one verified email).",
+            "type": "boolean"
+          },
           "signatureVersion": {
             "type": "string",
             "enum": [
@@ -4081,6 +4230,16 @@
           "requiresV2": {
             "description": "True once signatureVersion is v2 or the connection has seen a v2 call.",
             "type": "boolean"
+          },
+          "tokenVerification": {
+            "$ref": "#/components/schemas/TokenVerification"
+          },
+          "allowedOrigins": {
+            "description": "Browser origins allowed to call POST /v1/widget/session.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -4161,6 +4320,16 @@
           },
           "exportUrl": {
             "type": "string"
+          },
+          "tokenVerification": {
+            "$ref": "#/components/schemas/TokenVerification"
+          },
+          "allowedOrigins": {
+            "description": "Browser origins allowed to call POST /v1/widget/session.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -10466,6 +10635,669 @@
         ],
         "description": "A Stripe balance credit or debit gave up: the `stripe_credit.failed` delivery body."
       },
+      "AccountCreditAppliedEventData": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "programId": {
+            "type": "string"
+          },
+          "sourceEventId": {
+            "type": "string",
+            "description": "The settled commission line, the reversal, or the referee reward this applies."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "referrer_credit",
+              "referrer_debit",
+              "referee_credit"
+            ]
+          },
+          "commissionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "partnerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customerRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Positive, integer minor units. Credits are sent to Stripe as a negative amount, debits as positive."
+          },
+          "currency": {
+            "type": "string",
+            "description": "The commission's currency."
+          },
+          "appliedAmountMinor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was (or will be) sent to Stripe, in appliedCurrency: amountMinor converted at your FX rate when the balance currency differs. A debit uses its credit's currency and rate."
+          },
+          "appliedCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Stripe customer balance currency the row is applied in."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "applied",
+              "failed",
+              "no_customer",
+              "ambiguous_customer",
+              "fx_rate_missing",
+              "canceled"
+            ]
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "provider": {
+            "type": "string",
+            "description": "The billing provider credited: `stripe` or `chargebee`."
+          },
+          "connectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The billing connection whose credentials were used; null for Stripe on its own key path."
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider's customer id (Stripe `cus_…`, Chargebee customer id)."
+          },
+          "transactionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider's record of the credit or debit once applied (Stripe balance transaction, Chargebee promotional credit)."
+          }
+        },
+        "required": [
+          "id",
+          "programId",
+          "sourceEventId",
+          "kind",
+          "commissionId",
+          "partnerId",
+          "customerRef",
+          "amountMinor",
+          "currency",
+          "appliedAmountMinor",
+          "appliedCurrency",
+          "status",
+          "attempts",
+          "lastError",
+          "createdAt",
+          "updatedAt",
+          "provider",
+          "connectionId",
+          "customerId",
+          "transactionId"
+        ],
+        "description": "`data` of a `account_credit.applied` event: The account-credit rail credited a referrer (or a referee's store-credit reward) on their customer account in your billing system, with your credentials: a Stripe customer balance transaction or a Chargebee promotional credit. Sent for every provider; Stripe rows also send `stripe_credit.applied`. `transactionId` is the provider's record."
+      },
+      "AccountCreditAppliedEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The event id (`evt_…`); the same event delivered to several endpoints has the same id."
+          },
+          "topic": {
+            "type": "string",
+            "const": "account_credit.applied"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "livemode": {
+            "type": "boolean",
+            "description": "false for events from test mode."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountCreditAppliedEventData"
+          }
+        },
+        "required": [
+          "id",
+          "topic",
+          "orgId",
+          "livemode",
+          "createdAt",
+          "data"
+        ],
+        "description": "An account credit was applied in your billing system: the `account_credit.applied` delivery body."
+      },
+      "AccountCreditReversedEventData": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "programId": {
+            "type": "string"
+          },
+          "sourceEventId": {
+            "type": "string",
+            "description": "The settled commission line, the reversal, or the referee reward this applies."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "referrer_credit",
+              "referrer_debit",
+              "referee_credit"
+            ]
+          },
+          "commissionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "partnerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customerRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Positive, integer minor units. Credits are sent to Stripe as a negative amount, debits as positive."
+          },
+          "currency": {
+            "type": "string",
+            "description": "The commission's currency."
+          },
+          "appliedAmountMinor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was (or will be) sent to Stripe, in appliedCurrency: amountMinor converted at your FX rate when the balance currency differs. A debit uses its credit's currency and rate."
+          },
+          "appliedCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Stripe customer balance currency the row is applied in."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "applied",
+              "failed",
+              "no_customer",
+              "ambiguous_customer",
+              "fx_rate_missing",
+              "canceled"
+            ]
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "provider": {
+            "type": "string",
+            "description": "The billing provider credited: `stripe` or `chargebee`."
+          },
+          "connectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The billing connection whose credentials were used; null for Stripe on its own key path."
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider's customer id (Stripe `cus_…`, Chargebee customer id)."
+          },
+          "transactionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider's record of the credit or debit once applied (Stripe balance transaction, Chargebee promotional credit)."
+          }
+        },
+        "required": [
+          "id",
+          "programId",
+          "sourceEventId",
+          "kind",
+          "commissionId",
+          "partnerId",
+          "customerRef",
+          "amountMinor",
+          "currency",
+          "appliedAmountMinor",
+          "appliedCurrency",
+          "status",
+          "attempts",
+          "lastError",
+          "createdAt",
+          "updatedAt",
+          "provider",
+          "connectionId",
+          "customerId",
+          "transactionId"
+        ],
+        "description": "`data` of a `account_credit.reversed` event: The account-credit rail debited back (part of) an applied credit after `commission.reversed`, in the credit's currency and at its rate. Stripe rows also send `stripe_credit.applied`."
+      },
+      "AccountCreditReversedEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The event id (`evt_…`); the same event delivered to several endpoints has the same id."
+          },
+          "topic": {
+            "type": "string",
+            "const": "account_credit.reversed"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "livemode": {
+            "type": "boolean",
+            "description": "false for events from test mode."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountCreditReversedEventData"
+          }
+        },
+        "required": [
+          "id",
+          "topic",
+          "orgId",
+          "livemode",
+          "createdAt",
+          "data"
+        ],
+        "description": "An account credit was debited back after a reversal: the `account_credit.reversed` delivery body."
+      },
+      "AccountCreditFailedEventData": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "programId": {
+            "type": "string"
+          },
+          "sourceEventId": {
+            "type": "string",
+            "description": "The settled commission line, the reversal, or the referee reward this applies."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "referrer_credit",
+              "referrer_debit",
+              "referee_credit"
+            ]
+          },
+          "commissionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "partnerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "customerRef": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Positive, integer minor units. Credits are sent to Stripe as a negative amount, debits as positive."
+          },
+          "currency": {
+            "type": "string",
+            "description": "The commission's currency."
+          },
+          "appliedAmountMinor": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was (or will be) sent to Stripe, in appliedCurrency: amountMinor converted at your FX rate when the balance currency differs. A debit uses its credit's currency and rate."
+          },
+          "appliedCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Stripe customer balance currency the row is applied in."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "applied",
+              "failed",
+              "no_customer",
+              "ambiguous_customer",
+              "fx_rate_missing",
+              "canceled"
+            ]
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "provider": {
+            "type": "string",
+            "description": "The billing provider credited: `stripe` or `chargebee`."
+          },
+          "connectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The billing connection whose credentials were used; null for Stripe on its own key path."
+          },
+          "customerId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider's customer id (Stripe `cus_…`, Chargebee customer id)."
+          },
+          "transactionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The provider's record of the credit or debit once applied (Stripe balance transaction, Chargebee promotional credit)."
+          }
+        },
+        "required": [
+          "id",
+          "programId",
+          "sourceEventId",
+          "kind",
+          "commissionId",
+          "partnerId",
+          "customerRef",
+          "amountMinor",
+          "currency",
+          "appliedAmountMinor",
+          "appliedCurrency",
+          "status",
+          "attempts",
+          "lastError",
+          "createdAt",
+          "updatedAt",
+          "provider",
+          "connectionId",
+          "customerId",
+          "transactionId"
+        ],
+        "description": "`data` of a `account_credit.failed` event: The account-credit rail stopped retrying a credit or debit after its last attempt: no customer matched (`no_customer`), several did (`ambiguous_customer`), no FX rate converts to the balance currency (`fx_rate_missing`) or the provider refused it (`failed`). `POST /v1/programs/{id}/credit-rail/requeue` gives the first three another round. Stripe rows also send `stripe_credit.failed`."
+      },
+      "AccountCreditFailedEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The event id (`evt_…`); the same event delivered to several endpoints has the same id."
+          },
+          "topic": {
+            "type": "string",
+            "const": "account_credit.failed"
+          },
+          "orgId": {
+            "type": "string"
+          },
+          "livemode": {
+            "type": "boolean",
+            "description": "false for events from test mode."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AccountCreditFailedEventData"
+          }
+        },
+        "required": [
+          "id",
+          "topic",
+          "orgId",
+          "livemode",
+          "createdAt",
+          "data"
+        ],
+        "description": "An account credit or debit gave up: the `account_credit.failed` delivery body."
+      },
       "WebhookEndpointRecoveredEventData": {
         "type": "object",
         "properties": {
@@ -14886,6 +15718,23 @@
           "previousSecretExpiresAt"
         ]
       },
+      "DeleteBillingConnectionsIdResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "const": true
+          },
+          "providerWebhookRemoved": {
+            "type": "boolean",
+            "description": "Whether the provider webhooks registered with `autoRegister` were removed (only where credentials were kept: BigCommerce). Best effort."
+          }
+        },
+        "required": [
+          "ok",
+          "providerWebhookRemoved"
+        ]
+      },
       "GetBillingEventsResponse": {
         "type": "object",
         "properties": {
@@ -18363,7 +19212,7 @@
           "reversals"
         ]
       },
-      "GetSandboxStripeFixturesResponse": {
+      "GetSandboxBillingFixturesResponse": {
         "type": "object",
         "properties": {
           "data": {
@@ -18371,8 +19220,16 @@
             "items": {
               "type": "object",
               "properties": {
-                "event": {
+                "provider": {
                   "type": "string"
+                },
+                "event": {
+                  "type": "string",
+                  "description": "Provider-neutral name, e.g. `payment.paid`."
+                },
+                "native": {
+                  "type": "string",
+                  "description": "The provider's own event name (also accepted as `event`)."
                 },
                 "overrides": {
                   "type": "array",
@@ -18383,7 +19240,9 @@
                 }
               },
               "required": [
+                "provider",
                 "event",
+                "native",
                 "overrides"
               ]
             }
@@ -18393,15 +19252,22 @@
           "data"
         ]
       },
-      "PostSandboxStripeFixturesResponse": {
+      "PostSandboxBillingFixturesResponse": {
         "type": "object",
         "properties": {
           "eventId": {
             "type": "string",
-            "description": "The Stripe event id sent (`evt_fixture_…`, or your `eventId`)."
+            "description": "The event id the connector dedupes on (`evt_fixture_…`, your `eventId`, or derived from the object, e.g. `shopify_order_…`)."
           },
           "event": {
             "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "nativeEvent": {
+            "type": "string",
+            "description": "The provider's own event name."
           },
           "received": {
             "type": "integer",
@@ -18500,17 +19366,49 @@
             "description": "Commission events the fixture created (earned, reversed…)."
           },
           "payload": {
-            "description": "The Stripe event that was processed.",
+            "description": "The provider payload that was processed (Recurly and BigCommerce: the enriched payload).",
             "$ref": "#/components/schemas/GetOpenapiJsonResponse"
           }
         },
         "required": [
           "eventId",
           "event",
+          "provider",
+          "nativeEvent",
           "received",
           "results",
           "commissions",
           "payload"
+        ]
+      },
+      "GetSandboxStripeFixturesResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "event": {
+                  "type": "string"
+                },
+                "overrides": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "The `overrides` fields this fixture uses."
+                }
+              },
+              "required": [
+                "event",
+                "overrides"
+              ]
+            }
+          }
+        },
+        "required": [
+          "data"
         ]
       },
       "PostImportProviderResponse": {
@@ -23800,6 +24698,9 @@
               }
             ]
           },
+          "resolveBillingCustomers": {
+            "type": "boolean"
+          },
           "signatureVersion": {
             "type": "string",
             "enum": [
@@ -23809,6 +24710,16 @@
           },
           "requiresV2": {
             "type": "boolean"
+          },
+          "tokenVerification": {
+            "$ref": "#/components/schemas/TokenVerification"
+          },
+          "allowedOrigins": {
+            "description": "Browser origins allowed to call POST /v1/widget/session.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
         "required": [
@@ -24250,6 +25161,45 @@
         "required": [
           "ok",
           "partner"
+        ]
+      },
+      "GetAuthConnectionsIdUsersCustomerRefReferralResponse": {
+        "type": "object",
+        "properties": {
+          "partnerId": {
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linkUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enrolledAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "partnerId",
+          "code",
+          "linkUrl",
+          "enrolledAt"
         ]
       },
       "PostAuthConnectionsIdSignalsResponse": {
@@ -33012,6 +33962,355 @@
           "next_cursor"
         ]
       },
+      "GetProgramsIdCreditRailResponse": {
+        "type": "object",
+        "properties": {
+          "programId": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string",
+            "description": "The billing provider credits go to: the connection's provider, or `stripe` with no connection."
+          },
+          "connectionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "referrerMatch": {
+            "type": "string",
+            "enum": [
+              "billing_link",
+              "metadata",
+              "email"
+            ]
+          },
+          "metadataKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "refereeRewards": {
+            "type": "boolean"
+          },
+          "balanceCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createCustomerIfMissing": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "metadata": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waitForCustomer": {
+            "type": "boolean"
+          },
+          "credentialsConnected": {
+            "type": "boolean",
+            "description": "Whether credentials are available: the connection's stored API credentials, or for Stripe its key path."
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "customerCurrency": {
+                "type": "boolean",
+                "description": "The provider reports a customer balance currency; without it credits go in the commission's currency (or balanceCurrency)."
+              },
+              "createCustomer": {
+                "type": "boolean",
+                "description": "createCustomerIfMissing is available."
+              }
+            },
+            "required": [
+              "customerCurrency",
+              "createCustomer"
+            ]
+          }
+        },
+        "required": [
+          "programId",
+          "provider",
+          "connectionId",
+          "enabled",
+          "referrerMatch",
+          "metadataKey",
+          "refereeRewards",
+          "balanceCurrency",
+          "createCustomerIfMissing",
+          "waitForCustomer",
+          "credentialsConnected",
+          "capabilities"
+        ]
+      },
+      "PostProgramsIdCreditRailRequeueResponse": {
+        "type": "object",
+        "properties": {
+          "requeued": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "creditIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "requeued",
+          "creditIds"
+        ]
+      },
+      "GetProgramsIdCreditRailLogResponse": {
+        "type": "object",
+        "properties": {
+          "object": {
+            "type": "string",
+            "const": "list"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "programId": {
+                  "type": "string"
+                },
+                "sourceEventId": {
+                  "type": "string",
+                  "description": "The settled commission line, the reversal, or the referee reward this applies."
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "referrer_credit",
+                    "referrer_debit",
+                    "referee_credit"
+                  ]
+                },
+                "commissionId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "partnerId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "customerRef": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "amountMinor": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Positive, integer minor units. Credits are sent to Stripe as a negative amount, debits as positive."
+                },
+                "currency": {
+                  "type": "string",
+                  "description": "The commission's currency."
+                },
+                "appliedAmountMinor": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What was (or will be) sent to Stripe, in appliedCurrency: amountMinor converted at your FX rate when the balance currency differs. A debit uses its credit's currency and rate."
+                },
+                "appliedCurrency": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The Stripe customer balance currency the row is applied in."
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "applied",
+                    "failed",
+                    "no_customer",
+                    "ambiguous_customer",
+                    "fx_rate_missing",
+                    "canceled"
+                  ]
+                },
+                "attempts": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "lastError": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                },
+                "provider": {
+                  "type": "string",
+                  "description": "The billing provider credited: `stripe` or `chargebee`."
+                },
+                "connectionId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The billing connection whose credentials were used; null for Stripe on its own key path."
+                },
+                "customerId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The provider's customer id (Stripe `cus_…`, Chargebee customer id)."
+                },
+                "transactionId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The provider's record of the credit or debit once applied (Stripe balance transaction, Chargebee promotional credit)."
+                }
+              },
+              "required": [
+                "id",
+                "programId",
+                "sourceEventId",
+                "kind",
+                "commissionId",
+                "partnerId",
+                "customerRef",
+                "amountMinor",
+                "currency",
+                "appliedAmountMinor",
+                "appliedCurrency",
+                "status",
+                "attempts",
+                "lastError",
+                "createdAt",
+                "updatedAt",
+                "provider",
+                "connectionId",
+                "customerId",
+                "transactionId"
+              ]
+            }
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more",
+          "next_cursor"
+        ]
+      },
       "PostWebhooksBillingConnectionIdResponse": {
         "type": "object",
         "properties": {
@@ -33800,7 +35099,7 @@
         }
       },
       "NotFound": {
-        "description": "No such resource. `error.code` is one of:\n\n- `not_found`: The resource does not exist in this org (ids from other orgs look the same), a referenced id does not exist, a list cursor is not in the list, or the endpoint does not exist.",
+        "description": "No such resource. `error.code` is one of:\n\n- `not_found`: The resource does not exist in this org (ids from other orgs look the same), a referenced id does not exist, a list cursor is not in the list, or the endpoint does not exist.\n- `not_enrolled`: The user is not a partner in the program (and the widget's autoEnroll is off, or no verified email was given).",
         "headers": {
           "x-request-id": {
             "$ref": "#/components/headers/RequestId"
@@ -33821,13 +35120,23 @@
                     "docs_url": "https://referalli.com/docs/errors-and-limits#not_found"
                   }
                 }
+              },
+              "not_enrolled": {
+                "summary": "not_enrolled",
+                "value": {
+                  "error": {
+                    "code": "not_enrolled",
+                    "message": "the user is not a partner in the program (and the widget's autoenroll is off, or no verified email was given)",
+                    "docs_url": "https://referalli.com/docs/errors-and-limits#not_enrolled"
+                  }
+                }
               }
             }
           }
         }
       },
       "Conflict": {
-        "description": "The request conflicts with the current state. `error.code` is one of:\n\n- `conflict`: A unique value is taken, or the action would break a rule (the message says which).\n- `api_key_expired`: This key has expired, so it can no longer be rotated; mint a new one.\n- `idempotency_in_progress`: A request with the same `Idempotency-Key` is still running; retry with the same key.\n- `stripe_key_required`: Stripe balance credits need a Stripe key: `PUT /v1/stripe-credits/connection` or a Stripe payout connection.\n- `replay`: A signed auth-connection call reused an id already received.\n- `live_mode_only`: Only changeable in live mode.\n- `test_mode_only`: Only exists in test mode.\n- `test_mode_unsupported`: Not available in test mode.",
+        "description": "The request conflicts with the current state. `error.code` is one of:\n\n- `conflict`: A unique value is taken, or the action would break a rule (the message says which).\n- `api_key_expired`: This key has expired, so it can no longer be rotated; mint a new one.\n- `idempotency_in_progress`: A request with the same `Idempotency-Key` is still running; retry with the same key.\n- `stripe_key_required`: Stripe balance credits need a Stripe key: `PUT /v1/stripe-credits/connection` or a Stripe payout connection.\n- `credit_credentials_required`: The account-credit rail's billing connection has no API credentials: `PUT /v1/billing/connections/{id}/credentials`.\n- `replay`: A signed auth-connection call reused an id already received.\n- `live_mode_only`: Only changeable in live mode.\n- `test_mode_only`: Only exists in test mode.\n- `test_mode_unsupported`: Not available in test mode.",
         "headers": {
           "x-request-id": {
             "$ref": "#/components/headers/RequestId"
@@ -33876,6 +35185,16 @@
                     "code": "stripe_key_required",
                     "message": "stripe balance credits need a stripe key",
                     "docs_url": "https://referalli.com/docs/errors-and-limits#stripe_key_required"
+                  }
+                }
+              },
+              "credit_credentials_required": {
+                "summary": "credit_credentials_required",
+                "value": {
+                  "error": {
+                    "code": "credit_credentials_required",
+                    "message": "the account-credit rail's billing connection has no api credentials",
+                    "docs_url": "https://referalli.com/docs/errors-and-limits#credit_credentials_required"
                   }
                 }
               },
@@ -33978,7 +35297,7 @@
         }
       },
       "UnprocessableEntity": {
-        "description": "The request cannot be processed as sent. `error.code` is one of:\n\n- `idempotency_key_reused`: The `Idempotency-Key` was used for a different request.\n- `validation_error`: On the signed auth-connection endpoints: an unknown or invalid field, after the signature checked out.\n- `stripe_key_invalid`: Stripe rejected the Stripe balance credit key (revoked, rolled or mistyped).\n- `stripe_key_wrong_mode`: A Stripe balance credit key of the other mode: live mode takes `rk_live_`/`sk_live_`, test mode `rk_test_`/`sk_test_`.\n- `stripe_key_permission`: The restricted Stripe key cannot write Customers.",
+        "description": "The request cannot be processed as sent. `error.code` is one of:\n\n- `idempotency_key_reused`: The `Idempotency-Key` was used for a different request.\n- `validation_error`: On the signed auth-connection endpoints: an unknown or invalid field, after the signature checked out.\n- `stripe_key_invalid`: Stripe rejected the Stripe balance credit key (revoked, rolled or mistyped).\n- `stripe_key_wrong_mode`: A Stripe balance credit key of the other mode: live mode takes `rk_live_`/`sk_live_`, test mode `rk_test_`/`sk_test_`.\n- `stripe_key_permission`: The restricted Stripe key cannot write Customers.\n- `provider_credentials_invalid`: The billing provider rejected the credentials (`autoRegister`, or the account-credit rail's connection credentials); nothing was saved.\n- `provider_credentials_wrong_mode`: Account-credit rail credentials of the other mode (a Chargebee `…-test` site in live mode, or another site in test mode).\n- `provider_permission`: The credentials are valid but cannot manage webhooks (`autoRegister`) or write customer credits (account-credit rail).",
         "headers": {
           "x-request-id": {
             "$ref": "#/components/headers/RequestId"
@@ -34037,6 +35356,36 @@
                     "code": "stripe_key_permission",
                     "message": "the restricted stripe key cannot write customers",
                     "docs_url": "https://referalli.com/docs/errors-and-limits#stripe_key_permission"
+                  }
+                }
+              },
+              "provider_credentials_invalid": {
+                "summary": "provider_credentials_invalid",
+                "value": {
+                  "error": {
+                    "code": "provider_credentials_invalid",
+                    "message": "the billing provider rejected the credentials (`autoregister`, or the account-credit rail's connection credentials)",
+                    "docs_url": "https://referalli.com/docs/errors-and-limits#provider_credentials_invalid"
+                  }
+                }
+              },
+              "provider_credentials_wrong_mode": {
+                "summary": "provider_credentials_wrong_mode",
+                "value": {
+                  "error": {
+                    "code": "provider_credentials_wrong_mode",
+                    "message": "account-credit rail credentials of the other mode (a chargebee `…-test` site in live mode, or another site in test mode)",
+                    "docs_url": "https://referalli.com/docs/errors-and-limits#provider_credentials_wrong_mode"
+                  }
+                }
+              },
+              "provider_permission": {
+                "summary": "provider_permission",
+                "value": {
+                  "error": {
+                    "code": "provider_permission",
+                    "message": "the credentials are valid but cannot manage webhooks (`autoregister`) or write customer credits (account-credit rail)",
+                    "docs_url": "https://referalli.com/docs/errors-and-limits#provider_permission"
                   }
                 }
               }
@@ -34139,7 +35488,7 @@
         }
       },
       "BadGateway": {
-        "description": "An upstream provider failed. `error.code` is one of:\n\n- `sso_provider_error`: The SSO provider returned an error; `details.provider` and `details.providerCode` say which.\n- `atlas_error`: Deprecated name of `sso_provider_error`; no longer returned.\n- `stripe_unavailable`: Stripe could not be reached to check a Stripe balance credit key; retry.",
+        "description": "An upstream provider failed. `error.code` is one of:\n\n- `sso_provider_error`: The SSO provider returned an error; `details.provider` and `details.providerCode` say which.\n- `atlas_error`: Deprecated name of `sso_provider_error`; no longer returned.\n- `stripe_unavailable`: Stripe could not be reached to check a Stripe balance credit key; retry.\n- `provider_unavailable`: The billing provider could not be reached or refused the request; nothing was saved. Retry.",
         "headers": {
           "x-request-id": {
             "$ref": "#/components/headers/RequestId"
@@ -34178,6 +35527,16 @@
                     "code": "stripe_unavailable",
                     "message": "stripe could not be reached to check a stripe balance credit key",
                     "docs_url": "https://referalli.com/docs/errors-and-limits#stripe_unavailable"
+                  }
+                }
+              },
+              "provider_unavailable": {
+                "summary": "provider_unavailable",
+                "value": {
+                  "error": {
+                    "code": "provider_unavailable",
+                    "message": "the billing provider could not be reached or refused the request",
+                    "docs_url": "https://referalli.com/docs/errors-and-limits#provider_unavailable"
                   }
                 }
               }
@@ -37381,6 +38740,8 @@
                           "google",
                           "keycloak",
                           "descope",
+                          "workos",
+                          "atlas",
                           "fusionauth"
                         ]
                       },
@@ -47764,6 +49125,89 @@
         ]
       }
     },
+    "/v1/widget/session": {
+      "post": {
+        "operationId": "postV1WidgetSession",
+        "summary": "Exchange a user session for a widget token",
+        "description": "Public, called by the referral widget from the browser with no merchant server route: `Authorization: Bearer <the signed-in user's own session JWT>` from their auth provider, body `{ programId }`. The program's auth connections say how to verify it (`tokenVerification`: a preset such as Clerk, Supabase, Firebase, Auth0, Cognito, WorkOS or Atlas, or your own issuer with a JWKS URL or HS256 secret); only connections whose issuer equals the token's `iss` are tried. Signature, issuer, audience (when configured) and expiry are checked with 60 seconds of clock skew. `customerRef` comes from `sub` (or the mapped claim). With the program's `settings.widget.autoEnroll`, a user who is not a partner yet is enrolled, but only with an email the token marks verified (`email_verified`); otherwise `404 not_enrolled`. CORS: only the connection's `allowedOrigins` (another origin gets `403` and no CORS header). Any token problem is a generic `401`. Rate-limited per connection, per user and (failures) per IP.\n\n**Auth:** none.",
+        "tags": [
+          "Tracking"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "programId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  }
+                },
+                "required": [
+                  "programId"
+                ]
+              },
+              "example": {
+                "programId": "prg_01JB2X9Q4M7T0E1R2S3V4W5Y6Z"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetSession"
+                },
+                "example": {
+                  "token": "eyJraW5kIjoid2lkZ2V0Ii….sig",
+                  "expiresAt": "2026-11-05T12:15:00.000Z",
+                  "partner": {
+                    "id": "ptr_01JB2X9R7C3D4E5F6G7H8J9K0M",
+                    "code": "dana",
+                    "linkUrl": "https://referalli.com/go/tk_9f2c/dana"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
     "/v1/referrals/associate": {
       "post": {
         "operationId": "postV1ReferralsAssociate",
@@ -50942,7 +52386,7 @@
       "post": {
         "operationId": "postV1BillingConnections",
         "summary": "Create a billing connection",
-        "description": "Connects a billing provider (`stripe`, `paddle`, `lemonsqueezy`, `polar`, `chargebee`, `shopify`, `recurly`, `braintree`, `woocommerce`, `bigcommerce` or `generic`) so its payment webhooks become commissions. Returns the `webhookUrl` path to register with the provider and its signing secret (generated unless you pass the provider's own `webhookSecret`); the secret is returned only here. For Stripe, pass `stripeKey` (a restricted key with Webhook Endpoints write and Customers write) instead of `webhookSecret`: Referalli registers a webhook endpoint at this connection's URL on your Stripe account with the events it reads and API version 2025-03-31.basil, stores the signing secret Stripe returns and answers with `stripeWebhookEndpointId`; nothing is saved unless Stripe registered it. If an endpoint on the account already points at one of your Stripe connections, it is updated and that connection returned with `reused: true` (one still `awaiting_secret` gets a fresh endpoint and its secret). `creditRail: { programId, ...settings }` also stores the key as that program's Stripe credit key and applies the `PUT /v1/programs/{id}/stripe-credits` settings (`enabled` defaults to true). The key is never returned and is stored only for `creditRail`. Deleting the connection leaves the Stripe endpoint in place. Errors: `422 stripe_key_wrong_mode`, `422 stripe_key_invalid`, `422 stripe_key_permission`, `502 stripe_unavailable`. A `filter` (`productIds`, `priceIds`, `skus` and/or exact `metadata`) limits which payments and subscription events earn when one provider account sells several products; the rest are recorded as `ignored_by_filter`. `programIds` limits the connection to those programs when one org runs several products: its events earn only through referrals in them, and a payment from a customer referred only in another program earns nothing (the event records `ignoredReason: \"no_referral_in_scope\"`); null or omitted = every program. A program-scoped API key must send `programIds` within its own. `status` is `awaiting_secret` when a provider that issues its own signing secret (Stripe, Paddle, Polar, Shopify, Recurly, Braintree) is connected without `webhookSecret`: its webhooks fail `401` until `PUT …/secret` stores the provider's secret, then it reads `active`. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+        "description": "Connects a billing provider (`stripe`, `paddle`, `lemonsqueezy`, `polar`, `chargebee`, `shopify`, `recurly`, `braintree`, `woocommerce`, `bigcommerce` or `generic`) so its payment webhooks become commissions. Returns the `webhookUrl` path to register with the provider and its signing secret (generated unless you pass the provider's own `webhookSecret`); the secret is returned only here. For Stripe, pass `stripeKey` (a restricted key with Webhook Endpoints write and Customers write) instead of `webhookSecret`: Referalli registers a webhook endpoint at this connection's URL on your Stripe account with the events it reads and API version 2025-03-31.basil, stores the signing secret Stripe returns and answers with `stripeWebhookEndpointId`; nothing is saved unless Stripe registered it. If an endpoint on the account already points at one of your Stripe connections, it is updated and that connection returned with `reused: true` (one still `awaiting_secret` gets a fresh endpoint and its secret). `creditRail: { programId, ...settings }` also stores the key as that program's Stripe credit key and applies the `PUT /v1/programs/{id}/stripe-credits` settings (`enabled` defaults to true). The key is never returned and is stored only for `creditRail`. Deleting the connection leaves the Stripe endpoint in place. Errors: `422 stripe_key_wrong_mode`, `422 stripe_key_invalid`, `422 stripe_key_permission`, `502 stripe_unavailable`. `autoRegister: true` with the provider's API `credentials` does the same for Shopify (`shopDomain`, `accessToken`, `apiSecret`), Paddle (`apiKey`), Polar (`accessToken`), Lemon Squeezy (`apiKey`, `storeId`), BigCommerce (`storeHash`, `apiToken`) and WooCommerce (`siteUrl`, `consumerKey`, `consumerSecret`), and for Stripe with `credentials: { secretKey }` (the `stripeKey` path); Chargebee, Recurly and Braintree have no webhook API and are set up by hand. It registers webhooks at this connection's URL with exactly the events Referalli reads, stores the secret that signs them (the provider's, Shopify's app API secret, or one Referalli chooses) and answers `active` with `providerWebhookIds`; a re-run reuses them (`reused: true`), nothing is saved unless the provider registered them, and the credentials are never returned and are kept (sealed) only for BigCommerce, whose connector reads orders with them. Errors: `422 provider_credentials_invalid`, `422 provider_permission`, `502 provider_unavailable`. A `filter` (`productIds`, `priceIds`, `skus` and/or exact `metadata`) limits which payments and subscription events earn when one provider account sells several products; the rest are recorded as `ignored_by_filter`. `programIds` limits the connection to those programs when one org runs several products: its events earn only through referrals in them, and a payment from a customer referred only in another program earns nothing (the event records `ignoredReason: \"no_referral_in_scope\"`); null or omitted = every program. A program-scoped API key must send `programIds` within its own. `status` is `awaiting_secret` when a provider that issues its own signing secret (Stripe, Paddle, Polar, Shopify, Recurly, Braintree) is connected without `webhookSecret`: its webhooks fail `401` until `PUT …/secret` stores the provider's secret, then it reads `active`. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
         "tags": [
           "Billing connections"
         ],
@@ -51138,6 +52582,28 @@
                     "required": [
                       "programId"
                     ]
+                  },
+                  "autoRegister": {
+                    "type": "boolean"
+                  },
+                  "credentials": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    }
                   }
                 },
                 "required": [
@@ -51476,7 +52942,7 @@
       "put": {
         "operationId": "putV1BillingConnectionsIdCredentials",
         "summary": "Set provider API credentials",
-        "description": "For providers that send thin webhooks (Recurly, BigCommerce), the API credentials used to fetch the full event: `apiKey`, or `apiToken` plus `storeHash`, and `region`. Stored encrypted. 400 for providers that take no credentials or when a required field is missing. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+        "description": "For providers that send thin webhooks (Recurly, BigCommerce), the API credentials used to fetch the full event: `apiKey`, or `apiToken` plus `storeHash`, and `region`. Chargebee: `apiKey` and `site` (the subdomain), used by the account-credit rail (`PUT /v1/programs/{id}/credit-rail`); setting them needs a recent sign-in. Stored encrypted. 400 for providers that take no credentials or when a required field is missing. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
         "tags": [
           "Billing connections"
         ],
@@ -51524,6 +52990,10 @@
                       "us",
                       "eu"
                     ]
+                  },
+                  "site": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
                   }
                 }
               }
@@ -51874,7 +53344,7 @@
       "delete": {
         "operationId": "deleteV1BillingConnectionsId",
         "summary": "Delete a billing connection",
-        "description": "Deletes the connection: its secrets and credentials are wiped and its webhook URL stops accepting events. Recorded billing events stay. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+        "description": "Deletes the connection: its secrets and credentials are wiped and its webhook URL stops accepting events. Recorded billing events stay. Webhooks registered with `autoRegister` are removed from the provider, best effort, only where the connection kept credentials (BigCommerce): `providerWebhookRemoved` says whether they were. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
         "tags": [
           "Billing connections"
         ],
@@ -51903,7 +53373,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Ok"
+                  "$ref": "#/components/schemas/DeleteBillingConnectionsIdResponse"
                 }
               }
             }
@@ -62894,11 +64364,276 @@
         ]
       }
     },
+    "/v1/sandbox/billing-fixtures": {
+      "get": {
+        "operationId": "getV1SandboxBillingFixtures",
+        "summary": "List billing event fixtures",
+        "description": "Test mode only. The provider events `POST /v1/sandbox/billing-fixtures` can send, for every billing provider or the one named by `provider`: the provider-neutral `event` name (`payment.paid`, `payment.refunded`, `payment.disputed`, `subscription.created`, `subscription.canceled`, …), the provider's own `native` name, and the `overrides` fields each uses.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`.",
+        "tags": [
+          "Developers"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "stripe",
+                "paddle",
+                "lemonsqueezy",
+                "polar",
+                "chargebee",
+                "shopify",
+                "generic",
+                "recurly",
+                "braintree",
+                "woocommerce",
+                "bigcommerce"
+              ]
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/Mode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetSandboxBillingFixturesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "x-required-scope": "billing:read",
+        "x-scopes": [
+          "billing:read",
+          "billing:write",
+          "read",
+          "full",
+          "admin"
+        ]
+      },
+      "post": {
+        "operationId": "postV1SandboxBillingFixtures",
+        "summary": "Send a billing event fixture",
+        "description": "Test mode only (`409 test_mode_only` otherwise). Builds a realistic webhook payload for the provider of billing connection `connectionId` (Stripe, Paddle, Lemon Squeezy, Polar, Chargebee, Shopify, Recurly, Braintree, WooCommerce, BigCommerce or the generic contract) and runs it through the same pipeline as a signed webhook to that connection, so you can watch commissions happen without a provider account. `event` is a provider-neutral name (`payment.paid`, `payment.refunded`, `payment.disputed`, `subscription.created`, `subscription.canceled`; Stripe also `subscription.updated`, `customer.created` and `customer.updated`; generic `customer.updated`) or the provider's own event name; `GET /v1/sandbox/billing-fixtures?provider=` lists what each provider has. `overrides` sets `customerRef` (the provider customer id), `amountMinor`, `currency`, `metadata`, `invoiceId` (alias `orderId`: the paid invoice, order or transaction), `subscriptionId` and, for Stripe, `chargeId`; a refund or dispute finds its payment by `invoiceId` (Stripe: `chargeId`), so reuse the paid one. Recurly and BigCommerce fixtures are the enriched payload, so no API credentials are needed. Each call is a new event unless you pass `eventId`, which replays (the second answers `duplicate: true`). Returns the event id, the processing results, the commission events created and the payload sent. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+        "tags": [
+          "Developers"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/Mode"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "connectionId": {
+                    "type": "string"
+                  },
+                  "eventId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  },
+                  "overrides": {
+                    "default": {},
+                    "type": "object",
+                    "properties": {
+                      "customerRef": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "amountMinor": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "currency": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z]{3}$"
+                      },
+                      "metadata": {
+                        "type": "object",
+                        "propertyNames": {
+                          "type": "string"
+                        },
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      },
+                      "invoiceId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "orderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "chargeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "subscriptionId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      }
+                    }
+                  },
+                  "event": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "required": [
+                  "connectionId",
+                  "event"
+                ]
+              },
+              "example": {
+                "connectionId": "bcon_123",
+                "event": "payment.paid",
+                "overrides": {
+                  "customerRef": "ctm_123",
+                  "amountMinor": 4900,
+                  "invoiceId": "txn_123"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostSandboxBillingFixturesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "x-required-scope": "billing:write",
+        "x-scopes": [
+          "billing:write",
+          "full",
+          "admin"
+        ],
+        "x-roles": [
+          "owner",
+          "admin"
+        ]
+      }
+    },
     "/v1/sandbox/stripe-fixtures": {
       "get": {
         "operationId": "getV1SandboxStripeFixtures",
         "summary": "List Stripe event fixtures",
-        "description": "Test mode only. The Stripe event types `POST /v1/sandbox/stripe-fixtures` can send, each with the `overrides` fields it uses.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`.",
+        "description": "Test mode only. The Stripe event types `POST /v1/sandbox/stripe-fixtures` can send, each with the `overrides` fields it uses. Kept for existing callers: `GET /v1/sandbox/billing-fixtures?provider=stripe` lists the same.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`.",
         "tags": [
           "Developers"
         ],
@@ -62970,7 +64705,7 @@
       "post": {
         "operationId": "postV1SandboxStripeFixtures",
         "summary": "Send a Stripe event fixture",
-        "description": "Test mode only (`409 test_mode_only` otherwise). Builds a realistic Stripe event (`invoice.paid`, `charge.refunded`, `charge.dispute.created`, `customer.created`, `customer.updated`, `customer.subscription.created`, `customer.subscription.updated` or `customer.subscription.deleted`) and runs it through the same pipeline as a signed webhook to the stripe billing connection `connectionId`, so you can watch commissions happen without a Stripe account. `overrides` sets `customerRef` (the Stripe customer id), `amountMinor`, `currency`, `metadata`, `invoiceId` and `chargeId`; refunds and disputes find their payment by `chargeId`, so reuse the `invoice.paid` one. Each call is a new event unless you pass `eventId`, which replays (the second answers `duplicate: true`). Returns the event id, the processing results, the commission events created and the payload sent. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+        "description": "Test mode only (`409 test_mode_only` otherwise). Builds a realistic Stripe event (`invoice.paid`, `charge.refunded`, `charge.dispute.created`, `customer.created`, `customer.updated`, `customer.subscription.created`, `customer.subscription.updated` or `customer.subscription.deleted`) and runs it through the same pipeline as a signed webhook to the stripe billing connection `connectionId`, so you can watch commissions happen without a Stripe account. `overrides` sets `customerRef` (the Stripe customer id), `amountMinor`, `currency`, `metadata`, `invoiceId`, `chargeId` and `subscriptionId`; refunds and disputes find their payment by `chargeId`, so reuse the `invoice.paid` one. Each call is a new event unless you pass `eventId`, which replays (the second answers `duplicate: true`). Returns the event id, the processing results, the commission events created and the payload sent. Audited. The Stripe-only alias of `POST /v1/sandbox/billing-fixtures`.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
         "tags": [
           "Developers"
         ],
@@ -62994,19 +64729,6 @@
                 "properties": {
                   "connectionId": {
                     "type": "string"
-                  },
-                  "event": {
-                    "type": "string",
-                    "enum": [
-                      "invoice.paid",
-                      "charge.refunded",
-                      "charge.dispute.created",
-                      "customer.created",
-                      "customer.updated",
-                      "customer.subscription.created",
-                      "customer.subscription.updated",
-                      "customer.subscription.deleted"
-                    ]
                   },
                   "eventId": {
                     "type": "string",
@@ -63045,12 +64767,35 @@
                         "minLength": 1,
                         "maxLength": 255
                       },
+                      "orderId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
                       "chargeId": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 255
+                      },
+                      "subscriptionId": {
                         "type": "string",
                         "minLength": 1,
                         "maxLength": 255
                       }
                     }
+                  },
+                  "event": {
+                    "type": "string",
+                    "enum": [
+                      "invoice.paid",
+                      "charge.refunded",
+                      "charge.dispute.created",
+                      "customer.created",
+                      "customer.updated",
+                      "customer.subscription.created",
+                      "customer.subscription.updated",
+                      "customer.subscription.deleted"
+                    ]
                   }
                 },
                 "required": [
@@ -63076,7 +64821,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PostSandboxStripeFixturesResponse"
+                  "$ref": "#/components/schemas/PostSandboxBillingFixturesResponse"
                 }
               }
             }
@@ -79906,7 +81651,7 @@
       "post": {
         "operationId": "postV1AuthConnections",
         "summary": "Connect an auth platform",
-        "description": "Connects your sign-up system so new users are attributed server-side without calling associate: `clerk`, `supabase`, `workos` or `generic` receive the platform's user webhooks at the returned URL; `atlas` and `custom` call the signed protocol endpoints under `/v1/auth/connections/{id}/`. `autoEnrollUsers` makes every new user a partner too. Returns the signing secret once. 409 when an Atlas instance already has a connection.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
+        "description": "Connects your sign-up system so new users are attributed server-side without calling associate: `clerk`, `supabase`, `workos` or `generic` receive the platform's user webhooks at the returned URL; `atlas` and `custom` call the signed protocol endpoints under `/v1/auth/connections/{id}/`. `autoEnrollUsers` makes every new user a partner too. `tokenVerification` and `allowedOrigins` let the referral widget run with no server route (`POST /v1/widget/session`); an HS256 `sharedSecret` is sealed and never returned. Returns the signing secret once. 409 when an Atlas instance already has a connection.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
         "tags": [
           "Integrations"
         ],
@@ -79992,6 +81737,101 @@
                         "type": "string"
                       }
                     }
+                  },
+                  "tokenVerification": {
+                    "type": "object",
+                    "properties": {
+                      "preset": {
+                        "type": "string",
+                        "enum": [
+                          "clerk",
+                          "supabase",
+                          "firebase",
+                          "auth0",
+                          "cognito",
+                          "stytch",
+                          "kinde",
+                          "okta",
+                          "entra",
+                          "google",
+                          "keycloak",
+                          "descope",
+                          "workos",
+                          "atlas",
+                          "fusionauth"
+                        ]
+                      },
+                      "tenant": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "issuer": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "jwksUrl": {
+                        "type": "string",
+                        "maxLength": 1024,
+                        "pattern": "^https:\\/\\/[^\\s#]+$"
+                      },
+                      "keyType": {
+                        "type": "string",
+                        "enum": [
+                          "jwks",
+                          "hs256"
+                        ]
+                      },
+                      "sharedSecret": {
+                        "type": "string",
+                        "minLength": 32,
+                        "maxLength": 4096
+                      },
+                      "audience": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 512
+                      },
+                      "maxAgeS": {
+                        "type": "integer",
+                        "minimum": 30,
+                        "maximum": 3600
+                      },
+                      "claims": {
+                        "type": "object",
+                        "properties": {
+                          "customerRef": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "email": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "emailVerified": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "allowedOrigins": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 255
+                    }
                   }
                 },
                 "required": [
@@ -80003,7 +81843,14 @@
                 "provider": "custom",
                 "programId": "prg_01JB2X9Q4M7T0E1R2S3V4W5Y6Z",
                 "name": "Our auth",
-                "autoEnrollUsers": true
+                "autoEnrollUsers": true,
+                "tokenVerification": {
+                  "preset": "clerk",
+                  "tenant": "clerk.acme.com"
+                },
+                "allowedOrigins": [
+                  "https://app.acme.com"
+                ]
               }
             }
           }
@@ -80493,7 +82340,7 @@
       "patch": {
         "operationId": "patchV1AuthConnectionsId",
         "summary": "Update an auth connection",
-        "description": "Pauses or resumes a connection, renames it, changes `autoEnrollUsers` or the destination of auto-created links, or (signed-protocol connections) sets `signatureVersion`: `v2` to require request-line signatures, `v1+v2` to accept both again.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
+        "description": "Pauses or resumes a connection, renames it, changes `autoEnrollUsers` or the destination of auto-created links, turns `resolveBillingCustomers` on or off, or (signed-protocol connections) sets `signatureVersion`: `v2` to require request-line signatures, `v1+v2` to accept both again. `resolveBillingCustomers` (any provider, default false): a billing customer that arrives with no customerRef (no `referalli_customer_ref` metadata, no `customerRefMetadataKey` hit) in a program this connection serves (within the billing connection's `programIds`) is resolved through this connection's users: `referalli_user_id` or `<provider>_user_id` metadata naming a user it reported, else exactly one user whose current email is the customer's and verified. The billing link is recorded as metadata would record it; none or several matches record `ignoredReason: \"identity_unresolved\"` / `\"identity_ambiguous\"` on the billing event. Explicit metadata always wins. Matching uses only the org's own data. `tokenVerification` replaces the widget-session verifier (an HS256 secret is kept when `sharedSecret` is left out; `null` removes it) and `allowedOrigins` replaces the origin list.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
         "tags": [
           "Integrations"
         ],
@@ -80549,12 +82396,117 @@
                       }
                     ]
                   },
+                  "resolveBillingCustomers": {
+                    "type": "boolean"
+                  },
                   "signatureVersion": {
                     "type": "string",
                     "enum": [
                       "v1+v2",
                       "v2"
                     ]
+                  },
+                  "tokenVerification": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "preset": {
+                            "type": "string",
+                            "enum": [
+                              "clerk",
+                              "supabase",
+                              "firebase",
+                              "auth0",
+                              "cognito",
+                              "stytch",
+                              "kinde",
+                              "okta",
+                              "entra",
+                              "google",
+                              "keycloak",
+                              "descope",
+                              "workos",
+                              "atlas",
+                              "fusionauth"
+                            ]
+                          },
+                          "tenant": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "issuer": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "jwksUrl": {
+                            "type": "string",
+                            "maxLength": 1024,
+                            "pattern": "^https:\\/\\/[^\\s#]+$"
+                          },
+                          "keyType": {
+                            "type": "string",
+                            "enum": [
+                              "jwks",
+                              "hs256"
+                            ]
+                          },
+                          "sharedSecret": {
+                            "type": "string",
+                            "minLength": 32,
+                            "maxLength": 4096
+                          },
+                          "audience": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "maxAgeS": {
+                            "type": "integer",
+                            "minimum": 30,
+                            "maximum": 3600
+                          },
+                          "claims": {
+                            "type": "object",
+                            "properties": {
+                              "customerRef": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "email": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "emailVerified": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              },
+                              "name": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 200
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "allowedOrigins": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 255
+                    }
                   }
                 }
               }
@@ -81502,6 +83454,9 @@
                     "format": "email",
                     "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
                   },
+                  "emailVerified": {
+                    "type": "boolean"
+                  },
                   "name": {
                     "type": "string",
                     "maxLength": 200
@@ -81547,6 +83502,204 @@
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/auth/connections/{id}/widget-tokens": {
+      "post": {
+        "operationId": "postV1AuthConnectionsIdWidgetTokens",
+        "summary": "Mint a widget token for a user (signed protocol)",
+        "description": "For platforms that hold the connection secret (hosted account pages, sessions that aren't JWTs): a referral-widget token for `customerRef` in the connection's program, the same answer as `POST /v1/widget/session`. With the program's widget `autoEnroll`, a non-partner is enrolled only when `emailVerified` is true; otherwise `404 not_enrolled`. `ttlSeconds` 60 to 3600 (default 900). Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none.",
+        "tags": [
+          "Integrations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "customerRef": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "email": {
+                    "type": "string",
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "emailVerified": {
+                    "type": "boolean"
+                  },
+                  "displayName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "ttlSeconds": {
+                    "type": "integer",
+                    "minimum": 60,
+                    "maximum": 3600
+                  }
+                },
+                "required": [
+                  "customerRef"
+                ]
+              },
+              "example": {
+                "customerRef": "usr_123",
+                "email": "dana@example.com",
+                "emailVerified": true,
+                "displayName": "Dana"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WidgetSession"
+                },
+                "example": {
+                  "token": "eyJraW5kIjoid2lkZ2V0Ii….sig",
+                  "expiresAt": "2026-11-05T12:15:00.000Z",
+                  "partner": {
+                    "id": "ptr_01JB2X9R7C3D4E5F6G7H8J9K0M",
+                    "code": "dana",
+                    "linkUrl": "https://referalli.com/go/tk_9f2c/dana"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "423": {
+            "$ref": "#/components/responses/Locked"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/v1/auth/connections/{id}/users/{customerRef}/referral": {
+      "get": {
+        "operationId": "getV1AuthConnectionsIdUsersCustomerRefReferral",
+        "summary": "Get a user's referral link (signed protocol)",
+        "description": "The user's partner identity in the connection's program, so the platform can keep the link on its own user object: `{ partnerId, code, linkUrl, enrolledAt }`, or `404 not_enrolled`. Sign the query string (empty) as the payload, or use a v2 signature. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none.",
+        "tags": [
+          "Integrations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "customerRef",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetAuthConnectionsIdUsersCustomerRefReferralResponse"
+                },
+                "example": {
+                  "partnerId": "ptr_01JB2X9R7C3D4E5F6G7H8J9K0M",
+                  "code": "dana",
+                  "linkUrl": "https://referalli.com/go/tk_9f2c/dana",
+                  "enrolledAt": "2026-11-01T09:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
           },
           "423": {
             "$ref": "#/components/responses/Locked"
@@ -88968,6 +91121,529 @@
         ]
       }
     },
+    "/v1/programs/{id}/credit-rail": {
+      "get": {
+        "operationId": "getV1ProgramsIdCreditRail",
+        "summary": "Get a program's account-credit rail settings",
+        "description": "The provider-neutral view of the account-credit rail: which billing provider credits go to (`provider`, from the billing connection `connectionId`, or `stripe` with no connection), the same matching and currency settings as the Stripe endpoints, whether credentials are available (`credentialsConnected`) and what the provider supports (`capabilities.customerCurrency`, `capabilities.createCustomer`). Credentials are never returned. A program set up with `PUT /v1/programs/{id}/stripe-credits` reads here as `provider: \"stripe\"`.\n\n**Auth:** an API key with `payouts:read`, or a session of any role.\n\n**Scopes:** `payouts:read`, `payouts:write`, `read`, `full`, `admin`.",
+        "tags": [
+          "Commissions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/Mode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetProgramsIdCreditRailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "x-required-scope": "payouts:read",
+        "x-scopes": [
+          "payouts:read",
+          "payouts:write",
+          "read",
+          "full",
+          "admin"
+        ]
+      },
+      "put": {
+        "operationId": "putV1ProgramsIdCreditRail",
+        "summary": "Set a program's account-credit rail settings",
+        "description": "Turns the account-credit rail on or off for a program and picks where credits go. `connectionId` names a billing connection: its provider picks the adapter (`stripe` or `chargebee`; verified live: Stripe only) and its stored API credentials are used (Chargebee: `PUT /v1/billing/connections/{id}/credentials` with `apiKey` and `site`). The connection's `programIds` must include the program or be empty. With no `connectionId` the provider is Stripe on its own key path (`PUT /v1/stripe-credits/connection`, a program key, or a Stripe payout connection). Every other field means what it means on `PUT /v1/programs/{id}/stripe-credits` and is replaced on every PUT. A provider without customer creation (Chargebee) refuses `createCustomerIfMissing` (400); Chargebee matches `referrerMatch: \"metadata\"` on `metadataKey` `id` (the customer id) or a custom field `cf_…`. Credentials are checked with the provider on save: `422 provider_credentials_invalid`, `422 provider_credentials_wrong_mode` (a Chargebee `…-test` site in live mode, or another site in test mode), `422 provider_permission` (cannot write credits), `502 provider_unavailable`; enabling without credentials is `409 credit_credentials_required` (`409 stripe_key_required` for Stripe). Owner or admin. Audited.\n\n**Auth:** an API key with `payouts:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `payouts:write`, `full`, `admin`.",
+        "tags": [
+          "Commissions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/Mode"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "referrerMatch": {
+                    "default": "billing_link",
+                    "type": "string",
+                    "enum": [
+                      "billing_link",
+                      "metadata",
+                      "email"
+                    ]
+                  },
+                  "metadataKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40,
+                    "pattern": "^[A-Za-z0-9_-]+$"
+                  },
+                  "refereeRewards": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "balanceCurrency": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^[A-Za-z]{3}$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "createCustomerIfMissing": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "metadata": {
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "additionalProperties": {
+                              "type": "string",
+                              "maxLength": 500
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "waitForCustomer": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "connectionId": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "enabled"
+                ]
+              },
+              "example": {
+                "connectionId": "bcn_01J...",
+                "enabled": true,
+                "referrerMatch": "email",
+                "refereeRewards": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetProgramsIdCreditRailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "x-required-scope": "payouts:write",
+        "x-scopes": [
+          "payouts:write",
+          "full",
+          "admin"
+        ],
+        "x-roles": [
+          "owner",
+          "admin"
+        ]
+      }
+    },
+    "/v1/programs/{id}/credit-rail/requeue": {
+      "post": {
+        "operationId": "postV1ProgramsIdCreditRailRequeue",
+        "summary": "Requeue stuck account credits",
+        "description": "Same as `POST /v1/programs/{id}/stripe-credits/requeue`, for every provider: resets the attempt count of this program's `no_customer`, `ambiguous_customer` and `fx_rate_missing` rows (all, or only `creditIds`). Owner or admin. Audited.\n\n**Auth:** an API key with `payouts:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `payouts:write`, `full`, `admin`.",
+        "tags": [
+          "Commissions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/Mode"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "creditIds": {
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "example": {
+                "creditIds": [
+                  "scr_01J..."
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostProgramsIdCreditRailRequeueResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "x-required-scope": "payouts:write",
+        "x-scopes": [
+          "payouts:write",
+          "full",
+          "admin"
+        ],
+        "x-roles": [
+          "owner",
+          "admin"
+        ]
+      }
+    },
+    "/v1/programs/{id}/credit-rail/log": {
+      "get": {
+        "operationId": "getV1ProgramsIdCreditRailLog",
+        "summary": "List a program's account credits",
+        "description": "Every credit and debit the rail queued for this program, newest first, provider-neutral: `provider`, `connectionId`, `customerId` (the provider's customer) and `transactionId` (the provider's record once applied) instead of the Stripe-named fields of `GET /v1/programs/{id}/stripe-credits/log`. Statuses and retries as there.\n\n**Auth:** an API key with `payouts:read`, or a session of any role.\n\n**Scopes:** `payouts:read`, `payouts:write`, `read`, `full`, `admin`.",
+        "tags": [
+          "Commissions"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "description": "Items per page, 1 to 100 (default 50). From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "starting_after",
+            "in": "query",
+            "required": false,
+            "description": "A cursor: the id of an item (the previous page's `next_cursor`); returns the items after it. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ending_before",
+            "in": "query",
+            "required": false,
+            "description": "A cursor: returns the items before this item id (the previous page). Not with `starting_after`. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "created[gte]",
+            "in": "query",
+            "required": false,
+            "description": "Only items created at or after this time (ISO 8601), on lists of timestamped records. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "created[lte]",
+            "in": "query",
+            "required": false,
+            "description": "Only items created at or before this time (ISO 8601), on lists of timestamped records. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ApiVersion"
+          },
+          {
+            "$ref": "#/components/parameters/OrgId"
+          },
+          {
+            "$ref": "#/components/parameters/Mode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of the log, newest first. Under API version 2026-10-21 the body is the plain array instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetProgramsIdCreditRailLogResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "default": {
+            "description": "Any other error, in the same envelope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiKey": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "x-required-scope": "payouts:read",
+        "x-scopes": [
+          "payouts:read",
+          "payouts:write",
+          "read",
+          "full",
+          "admin"
+        ]
+      }
+    },
     "/webhooks/billing/{connectionId}": {
       "post": {
         "operationId": "postWebhooksBillingConnectionId",
@@ -93698,6 +96374,288 @@
                   "lastError": "no Stripe customer found for this partner",
                   "createdAt": "2026-01-01T00:00:00.000Z",
                   "updatedAt": "2026-01-01T00:00:00.000Z"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Received. Any 2xx acknowledges the delivery."
+          }
+        },
+        "security": []
+      }
+    },
+    "account_credit.applied": {
+      "post": {
+        "operationId": "webhookAccountCreditApplied",
+        "summary": "An account credit was applied in your billing system",
+        "description": "The account-credit rail credited a referrer (or a referee's store-credit reward) on their customer account in your billing system, with your credentials: a Stripe customer balance transaction or a Chargebee promotional credit. Sent for every provider; Stripe rows also send `stripe_credit.applied`. `transactionId` is the provider's record.\n\nPOSTed to every active webhook endpoint subscribed to `account_credit.applied` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "webhook-id",
+            "in": "header",
+            "required": true,
+            "description": "The delivery id; the same on every retry and replay. Deduplicate on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "webhook-timestamp",
+            "in": "header",
+            "required": true,
+            "description": "When this attempt was signed, in unix seconds. Reject it when more than 5 minutes from your clock.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "webhook-signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1,` plus the base64 HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}`, keyed with the base64-decoded secret after `whsec_`. During a rotation, two signatures separated by a space.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-referalli-topic",
+            "in": "header",
+            "required": true,
+            "description": "The event topic, as in the body. The legacy header names from before the rename are also sent, with identical values, for existing integrations.",
+            "schema": {
+              "type": "string",
+              "const": "account_credit.applied"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreditAppliedEvent"
+              },
+              "example": {
+                "id": "evt_01JB2XH8J9K0L1M2N3P4Q5R6S7",
+                "topic": "account_credit.applied",
+                "orgId": "org_01JB2X9P0A1B2C3D4E5F6G7H8J",
+                "livemode": true,
+                "createdAt": "2026-10-21T15:04:05.123Z",
+                "data": {
+                  "id": "scr_01JB2XH8J9",
+                  "programId": "prg_01JB2XH8J9",
+                  "sourceEventId": "cme_01JB2XH8J9",
+                  "kind": "referrer_credit",
+                  "commissionId": "cme_01JB2XH8J9",
+                  "partnerId": "ptr_01JB2XH8J9",
+                  "customerRef": null,
+                  "amountMinor": 1980,
+                  "currency": "usd",
+                  "appliedAmountMinor": 1980,
+                  "appliedCurrency": "usd",
+                  "status": "applied",
+                  "attempts": 1,
+                  "lastError": null,
+                  "createdAt": "2026-01-01T00:00:00.000Z",
+                  "updatedAt": "2026-01-01T00:00:00.000Z",
+                  "provider": "chargebee",
+                  "connectionId": "bcn_01JB2XH8J9",
+                  "customerId": "cust_test_123",
+                  "transactionId": "pc_test_1"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Received. Any 2xx acknowledges the delivery."
+          }
+        },
+        "security": []
+      }
+    },
+    "account_credit.reversed": {
+      "post": {
+        "operationId": "webhookAccountCreditReversed",
+        "summary": "An account credit was debited back after a reversal",
+        "description": "The account-credit rail debited back (part of) an applied credit after `commission.reversed`, in the credit's currency and at its rate. Stripe rows also send `stripe_credit.applied`.\n\nPOSTed to every active webhook endpoint subscribed to `account_credit.reversed` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "webhook-id",
+            "in": "header",
+            "required": true,
+            "description": "The delivery id; the same on every retry and replay. Deduplicate on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "webhook-timestamp",
+            "in": "header",
+            "required": true,
+            "description": "When this attempt was signed, in unix seconds. Reject it when more than 5 minutes from your clock.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "webhook-signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1,` plus the base64 HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}`, keyed with the base64-decoded secret after `whsec_`. During a rotation, two signatures separated by a space.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-referalli-topic",
+            "in": "header",
+            "required": true,
+            "description": "The event topic, as in the body. The legacy header names from before the rename are also sent, with identical values, for existing integrations.",
+            "schema": {
+              "type": "string",
+              "const": "account_credit.reversed"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreditReversedEvent"
+              },
+              "example": {
+                "id": "evt_01JB2XH8J9K0L1M2N3P4Q5R6S7",
+                "topic": "account_credit.reversed",
+                "orgId": "org_01JB2X9P0A1B2C3D4E5F6G7H8J",
+                "livemode": true,
+                "createdAt": "2026-10-21T15:04:05.123Z",
+                "data": {
+                  "id": "scr_01JB2XH8J9",
+                  "programId": "prg_01JB2XH8J9",
+                  "sourceEventId": "rev_01JB2XH8J9",
+                  "kind": "referrer_debit",
+                  "commissionId": "cme_01JB2XH8J9",
+                  "partnerId": "ptr_01JB2XH8J9",
+                  "customerRef": null,
+                  "amountMinor": 1980,
+                  "currency": "usd",
+                  "appliedAmountMinor": 1980,
+                  "appliedCurrency": "usd",
+                  "status": "applied",
+                  "attempts": 1,
+                  "lastError": null,
+                  "createdAt": "2026-01-01T00:00:00.000Z",
+                  "updatedAt": "2026-01-01T00:00:00.000Z",
+                  "provider": "chargebee",
+                  "connectionId": "bcn_01JB2XH8J9",
+                  "customerId": "cust_test_123",
+                  "transactionId": "pc_test_1"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Received. Any 2xx acknowledges the delivery."
+          }
+        },
+        "security": []
+      }
+    },
+    "account_credit.failed": {
+      "post": {
+        "operationId": "webhookAccountCreditFailed",
+        "summary": "An account credit or debit gave up",
+        "description": "The account-credit rail stopped retrying a credit or debit after its last attempt: no customer matched (`no_customer`), several did (`ambiguous_customer`), no FX rate converts to the balance currency (`fx_rate_missing`) or the provider refused it (`failed`). `POST /v1/programs/{id}/credit-rail/requeue` gives the first three another round. Stripe rows also send `stripe_credit.failed`.\n\nPOSTed to every active webhook endpoint subscribed to `account_credit.failed` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "webhook-id",
+            "in": "header",
+            "required": true,
+            "description": "The delivery id; the same on every retry and replay. Deduplicate on it.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "webhook-timestamp",
+            "in": "header",
+            "required": true,
+            "description": "When this attempt was signed, in unix seconds. Reject it when more than 5 minutes from your clock.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "webhook-signature",
+            "in": "header",
+            "required": true,
+            "description": "`v1,` plus the base64 HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}`, keyed with the base64-decoded secret after `whsec_`. During a rotation, two signatures separated by a space.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-referalli-topic",
+            "in": "header",
+            "required": true,
+            "description": "The event topic, as in the body. The legacy header names from before the rename are also sent, with identical values, for existing integrations.",
+            "schema": {
+              "type": "string",
+              "const": "account_credit.failed"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountCreditFailedEvent"
+              },
+              "example": {
+                "id": "evt_01JB2XH8J9K0L1M2N3P4Q5R6S7",
+                "topic": "account_credit.failed",
+                "orgId": "org_01JB2X9P0A1B2C3D4E5F6G7H8J",
+                "livemode": true,
+                "createdAt": "2026-10-21T15:04:05.123Z",
+                "data": {
+                  "id": "scr_01JB2XH8J9",
+                  "programId": "prg_01JB2XH8J9",
+                  "sourceEventId": "cme_01JB2XH8J9",
+                  "kind": "referrer_credit",
+                  "commissionId": "cme_01JB2XH8J9",
+                  "partnerId": "ptr_01JB2XH8J9",
+                  "customerRef": null,
+                  "amountMinor": 1980,
+                  "currency": "usd",
+                  "appliedAmountMinor": null,
+                  "appliedCurrency": null,
+                  "status": "no_customer",
+                  "attempts": 24,
+                  "lastError": "no Chargebee customer found for this partner",
+                  "createdAt": "2026-01-01T00:00:00.000Z",
+                  "updatedAt": "2026-01-01T00:00:00.000Z",
+                  "provider": "chargebee",
+                  "connectionId": "bcn_01JB2XH8J9",
+                  "customerId": null,
+                  "transactionId": null
                 }
               }
             }
