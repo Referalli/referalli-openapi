@@ -823,6 +823,95 @@
           }
         },
         {
+          "name": "Sign a partner in with an Atlas integration token",
+          "request": {
+            "method": "GET",
+            "description": "Portal sign-in adapter `atlas-suite` (REF-S29): the merchant enables Atlas's `referalli` integration with audience `referalli:<orgId>`, mints a token with `getToken({ for: 'referalli' })` (integration-token-v1) and sends the partner here with it as `token`. Verified against the merchant's Atlas instance: `iss` must be one of its `trusted_issuers` and the signature that issuer's `jwks_uri`; `aud` `referalli:<orgId>`, `token_use` `template`, `exp - iat` ≤ 120 s, and a `principal` other than `partner` is refused. Each token works once. The account is found by `atlas:<issuer hash>:<sub>` (never by email); `ext` claims the partner the merchant created with that `externalRef`. Refusals are reported to Atlas's `POST /v1/integrations/verify_errors` when a partner-link secret is configured. Redirects to `next` or `/portal`, or to `/portal/login?error=`.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal-auth/:orgId/atlas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal-auth",
+                ":orgId",
+                "atlas"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "next",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "link",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Sign a partner in with an Atlas integration token (form post)",
+          "request": {
+            "method": "POST",
+            "description": "The same as the GET, with `token` (and `next`) in a form or JSON body, so the token stays out of URLs and logs.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal-auth/:orgId/atlas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal-auth",
+                ":orgId",
+                "atlas"
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "What a merchant's portal sign-in offers",
           "request": {
             "method": "GET",
@@ -892,6 +981,12 @@
                   "key": "spaceId",
                   "value": "",
                   "disabled": true
+                },
+                {
+                  "key": "reauth",
+                  "value": "",
+                  "description": "Set on the way back from the Atlas sign-in this route started (it is started once).",
+                  "disabled": true
                 }
               ]
             }
@@ -901,7 +996,7 @@
           "name": "Get the support-chat identity",
           "request": {
             "method": "GET",
-            "description": "The signed-in merchant user or partner as a Chatly widget identity: `externalId` (`merchant:<id>` or `partner:<id>`), email, name and `userHash`, the HMAC-SHA256 of `externalId` with Referalli's identity secret. `identity` is null when signed out or when identity verification isn't configured. Never cached.\n\n**Auth:** none.",
+            "description": "The signed-in merchant user or partner as a Chatly widget identity: `userToken`, an Atlas token minted for the Atlas session behind this one (audience `chatly:<channel>`, at most 120 s), which the page passes to the widget, and `externalId` (`merchant:<id>` or `partner:<id>`), which stays on the page to notice an account switch. `identity` is null when signed out, when the session has no Atlas session behind it, or when Atlas isn't configured. Never cached.\n\n**Auth:** none.",
             "header": [],
             "auth": {
               "type": "noauth"
@@ -915,6 +1010,34 @@
                 "v1",
                 "chatly",
                 "identity"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Open a portal sign-in link",
+          "request": {
+            "method": "GET",
+            "description": "The `url` from `POST /v1/partners/{id}/portal-link`: spends the token, sets a read-only partner session cookie limited to that partner and program, and redirects into the portal. 410 when already used or expired, 404 when unknown.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal-links/:token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal-links",
+                ":token"
+              ],
+              "variable": [
+                {
+                  "key": "token",
+                  "value": ""
+                }
               ]
             }
           }
@@ -1079,7 +1202,7 @@
           "name": "Set partner sign-in",
           "request": {
             "method": "PUT",
-            "description": "Chooses the portal sign-in adapter and its settings. `custom`: `issuer`, `jwksUrl` (https), optional `loginUrl` (your page that mints the token) and `autoEnrollProgramId`. `oidc`: `issuer`, `clientId`, `clientSecret`. `referalli` removes any configuration. Owner only.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`.",
+            "description": "Chooses the portal sign-in adapter and its settings. `custom`: `issuer` and `jwksUrl` (https), or `preset` + `tenant` for a known platform (`jwtPresets` in the GET lists them: Clerk, Supabase, Firebase, Auth0, Cognito, Stytch, Kinde, Okta, Entra ID, Google, Keycloak, Descope, FusionAuth), or `keyType: hs256` with a write-only `sharedSecret` (≥ 32 characters, sealed); optional `audience` (default `referalli:<org>`), `maxAgeS` (30 to 3600, default 300), `claims` (where `sub`, `email`, `name`, `emailVerified` live, by name or dot path), `loginUrl` (your page that mints the token) and `autoEnrollProgramId`. `oidc`: `issuer`, `clientId`, `clientSecret`. `referalli` removes any configuration. Owner only.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -1146,6 +1269,13 @@
                 "v1",
                 "hosts",
                 "current"
+              ],
+              "query": [
+                {
+                  "key": "themePreview",
+                  "value": "",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -1169,6 +1299,13 @@
                 "hosts",
                 "current",
                 "theme.css"
+              ],
+              "query": [
+                {
+                  "key": "themePreview",
+                  "value": "",
+                  "disabled": true
+                }
               ]
             }
           }
@@ -2079,6 +2216,26 @@
               ]
             }
           }
+        },
+        {
+          "name": "Identify the signed-in partner to the chat",
+          "request": {
+            "method": "GET",
+            "description": "On a merchant's portal domain, for the signed-in partner of that merchant: the head tags that tell the merchant's chat who they are (partner id, email, name) and, when the merchant saved its chat vendor's identity-verification secret, the vendor's proof (Intercom `user_hash`, a Zendesk messaging JWT, a HubSpot visitor token…). The secret itself never leaves the API. Elsewhere, or for someone who isn't this merchant's partner, `tags` is empty. Partner session; `private, no-store`.\n\n**Auth:** an API key with `partners:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/hosts/current/chat-identity",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "hosts",
+                "current",
+                "chat-identity"
+              ]
+            }
+          }
         }
       ]
     },
@@ -2090,7 +2247,7 @@
           "name": "Create an API key",
           "request": {
             "method": "POST",
-            "description": "Mints a secret key (`rk_live_…` / `rk_test_…`), shown only in this response. `scopes` defaults to `full`; a key can't grant scopes it doesn't hold. `mode` picks live, test or a matching pair of both (`both` returns `{ pairId, live, test }`); a test-mode caller can mint test keys only. `publishable: true` mints a browser-safe `rk_pub_` key limited to `programs:read` and `events:write` from `allowedOrigins`. `apiVersion` pins the key (default: latest). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write` (or `full`), or a session of any role.",
+            "description": "Mints a secret key (`rk_live_…` / `rk_test_…`), shown only in this response. `scopes` defaults to `full`; a key can't grant scopes it doesn't hold. `mode` picks live, test or a matching pair of both (`both` returns `{ pairId, live, test }`); a test-mode caller can mint test keys only. `publishable: true` mints a browser-safe `rk_pub_` key limited to `programs:read` and `events:write` from `allowedOrigins`. `apiVersion` pins the key (default: latest). `programIds` limits the key to those programs (their partners, links, referrals, commissions, enrollments, and webhook endpoints whose `programIds` are all within the key's, with their deliveries); a program-scoped key gets 403 `program_scoped_key` on org-wide endpoints (keys, team, org settings, billing, payouts, the event feed, analytics, creating programs). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write` (or `full`), or a session of any role.",
             "header": [
               {
                 "key": "Content-Type",
@@ -2209,7 +2366,7 @@
           "name": "Update an API key",
           "request": {
             "method": "PATCH",
-            "description": "Changes a key's pinned `apiVersion`, `owner` or expiry (`expiresInDays` from now; `null` removes it). Revoked keys are 404. Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write` (or `full`), or a session of any role.",
+            "description": "Changes a key's pinned `apiVersion`, `owner`, expiry (`expiresInDays` from now; `null` removes it) or `programIds` (`null` makes it org-wide). Revoked keys are 404. Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write` (or `full`), or a session of any role.",
             "header": [
               {
                 "key": "Content-Type",
@@ -2993,7 +3150,7 @@
           "name": "List programs",
           "request": {
             "method": "GET",
-            "description": "The org's programs, oldest first, with their settings.\n\n**Auth:** an API key with `programs:read` (or `full`), or a session of any role.",
+            "description": "The org's programs, oldest first, with their settings. `slug` returns just that program.\n\n**Auth:** an API key with `programs:read` (or `full`), or a session of any role.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/programs",
@@ -3005,6 +3162,11 @@
                 "programs"
               ],
               "query": [
+                {
+                  "key": "slug",
+                  "value": "",
+                  "disabled": true
+                },
                 {
                   "key": "limit",
                   "value": "50",
@@ -3068,7 +3230,7 @@
           "name": "Update a program",
           "request": {
             "method": "PATCH",
-            "description": "Changes any program field or setting; omitted fields keep their value, and `publicPage` is merged. Changing `termsMd` records a new terms version. Setting `status` to `paused` or `archived` stops new attribution. `mobileApp` (iOS Team ID and bundle id, Android package and signing-certificate fingerprints) publishes the program's apps in the universal-links and App Links files on the org's link hosts. Audited.\n\n**Auth:** an API key with `programs:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Changes any program field or setting; omitted fields keep their value, and `publicPage` is merged. Changing `termsMd` records a new terms version. Setting `status` to `paused` or `archived` stops new attribution. `mobileApp` (iOS Team ID and bundle id, Android package and signing-certificate fingerprints) publishes the program's apps in the universal-links and App Links files on the org's link hosts. `destinationUrl` moves the program's default link destination: every link still on the old default (the widget's or a sign-in connection's) is repointed in the same call, custom destinations stay, and links already shared follow at click time; `{code}` in it becomes the link's code. Audited.\n\n**Auth:** an API key with `programs:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -3104,10 +3266,50 @@
           }
         },
         {
+          "name": "Make a user a referrer",
+          "request": {
+            "method": "POST",
+            "description": "One idempotent call for one of your users: finds the partner by `externalRef` (or by `email`, enrolling them under this program's own `externalRef` when they refer for another product in the org), else creates it, then enrolls them and creates a coupon code and a link to the program's default destination when missing. `email` is needed only to create the partner (400 without it). 409 `email_taken` when that email is already enrolled in this program under another id.\n\n**Auth:** an API key with `programs:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/programs/:id/referrers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "programs",
+                ":id",
+                "referrers"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"externalRef\": \"usr_8812\",\n  \"email\": \"jane@customer.example\",\n  \"name\": \"Jane\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "Enroll a partner",
           "request": {
             "method": "POST",
-            "description": "Enrolls an existing partner in the program, approved at once. Publishes `partner.enrolled`. 409 when already enrolled.\n\n**Auth:** an API key with `programs:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Enrolls an existing partner in the program, approved at once. Publishes `partner.enrolled`. 409 when already enrolled. `externalRef` is this program's own id for the partner, when their partner `externalRef` belongs to another product sharing the org; this program's webhooks and `GET /v1/partners?externalRef=` then use it.\n\n**Auth:** an API key with `programs:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -3147,7 +3349,7 @@
           "name": "List program enrollments",
           "request": {
             "method": "GET",
-            "description": "The program's enrollments and applications, newest first, each with the partner and a cross-network warning when other merchants banned the same account. Filter with `status`.\n\n**Auth:** an API key with `programs:read` (or `full`), or a session of any role.",
+            "description": "The program's enrollments and applications, newest first, each with the partner and a cross-network warning when other merchants banned the same account and `externalRef` (this program's own id for the partner, or null). Filter with `status` or `partnerId`.\n\n**Auth:** an API key with `programs:read` (or `full`), or a session of any role.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/programs/:id/enrollments",
@@ -3163,6 +3365,11 @@
               "query": [
                 {
                   "key": "status",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "partnerId",
                   "value": "",
                   "disabled": true
                 },
@@ -3955,7 +4162,7 @@
           "name": "Get a partner",
           "request": {
             "method": "GET",
-            "description": "One partner, with a cross-network warning when the same account is flagged or banned by other merchants (it never says which).\n\n**Auth:** an API key with `partners:read` (or `full`), or a session of any role.",
+            "description": "One partner, with a cross-network warning when the same account is flagged or banned by other merchants (it never says which). With `programId`, `externalRef` is the one that program knows them by: its own externalRef for them when it has one, else the partner's.\n\n**Auth:** an API key with `partners:read` (or `full`), or a session of any role.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/partners/:id",
@@ -3966,6 +4173,13 @@
                 "v1",
                 "partners",
                 ":id"
+              ],
+              "query": [
+                {
+                  "key": "programId",
+                  "value": "",
+                  "disabled": true
+                }
               ],
               "variable": [
                 {
@@ -4044,7 +4258,7 @@
           "name": "List a partner's enrollments",
           "request": {
             "method": "GET",
-            "description": "The programs a partner is enrolled in or applied to, with status and group.\n\n**Auth:** an API key with `partners:read` (or `full`), or a session of any role.",
+            "description": "The programs a partner is enrolled in or applied to, with status, group and `externalRef` (that program's own id for the partner, or null when the partner's own applies).\n\n**Auth:** an API key with `partners:read` (or `full`), or a session of any role.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/partners/:id/enrollments",
@@ -4095,6 +4309,46 @@
                   "value": ""
                 }
               ]
+            }
+          }
+        },
+        {
+          "name": "Create a portal sign-in link",
+          "request": {
+            "method": "POST",
+            "description": "A single-use `url` (valid 5 minutes) for a \"View earnings\" button in your app: opening it signs the partner in to the partner portal for `programId`, with no second account. The session is read-only and limited to this partner in your organization (never the partner's other merchants or account settings) and lasts 12 hours. `returnUrl` must be a path inside the portal, such as `/portal/earnings`. 404 for a partner outside your organization or not enrolled in the program. Owner or admin.\n\n**Auth:** an API key with `partners:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/partners/:id/portal-link",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "partners",
+                ":id",
+                "portal-link"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"programId\": \"prg_01JB2X9Q4M7T0E1R2S3V4W5Y6Z\",\n  \"returnUrl\": \"/portal/earnings\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         },
@@ -5165,6 +5419,27 @@
           }
         },
         {
+          "name": "Get Referalli's embed manifest",
+          "request": {
+            "method": "GET",
+            "description": "Every origin the referral tracker (`aff.js`) touches on a merchant's site, by Content-Security-Policy directive, and every key it writes in the visitor's browser, in Cookie Munch's embed-v1 format (`https://cookiemunch.net/schemas/embed-v1.json`): `referalli_ctx` and its twin under the pre-rename name, a first-party cookie (and the same key in localStorage) in the `referrals` category for the program's cookie window (default 60 days). Cookie Munch's `referalli` cookie preset and `csp --merge` read it. Public, CORS `*`, cached for an hour.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/.well-known/referalli-embed.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                ".well-known",
+                "referalli-embed.json"
+              ]
+            }
+          }
+        },
+        {
           "name": "Get the iOS universal links file",
           "request": {
             "method": "GET",
@@ -5202,56 +5477,6 @@
               "path": [
                 ".well-known",
                 "assetlinks.json"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Get the embed manifest",
-          "request": {
-            "method": "GET",
-            "description": "Every origin a Referalli embed touches (the tracking script, the partner widget), the storage it writes (`referalli_ctx` and its legacy twin, cookie and localStorage, category `referrals`), the consent adapters the tracker reads, and dated `changes` announced 30 days ahead. Follows the suite's embed-v1 schema, so a CMP can import the storage declarations and a site can build its CSP. Public, CORS `*`, cached an hour.\n\n**Auth:** none.",
-            "header": [],
-            "auth": {
-              "type": "noauth"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/.well-known/forgedeck-embed.json",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                ".well-known",
-                "forgedeck-embed.json"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Get one org's embed manifest",
-          "request": {
-            "method": "GET",
-            "description": "The embed manifest for the org that owns `token` (its public tracking token): its link domain in the CSP origins, its longest program cookie window as the storage lifetime, and its consent default. Public, CORS `*`.\n\n**Auth:** none.",
-            "header": [],
-            "auth": {
-              "type": "noauth"
-            },
-            "url": {
-              "raw": "{{baseUrl}}/v1/embed?token=",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "embed"
-              ],
-              "query": [
-                {
-                  "key": "token",
-                  "value": "",
-                  "description": "The org's public tracking token.",
-                  "disabled": false
-                }
               ]
             }
           }
@@ -5487,6 +5712,152 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "Get the Cookie Munch consent-event link",
+          "request": {
+            "method": "GET",
+            "description": "What to enter in Cookie Munch to send your site's consent events to Referalli: link partner `referalli` with `externalId` (your org id); deliveries go to `receiverUrl`. `sites` are the Cookie Munch sites (cbids) whose events this org accepts, and `grants` says, per site, whether its owner granted Referalli that site in Cookie Munch (`granted`, `waiting_on_partner`, `revoked`, `expired`, `none`, or `unknown` when Cookie Munch couldn't be asked; `grantCheck` says why). `stampCheck.status` is `live` when Referalli checks visitors' consent stamps with Cookie Munch, else `not_configured`.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/consent-partners/cookiemunch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "consent-partners",
+                "cookiemunch"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set the Cookie Munch sites to accept consent events for",
+          "request": {
+            "method": "PUT",
+            "description": "Replaces the list of Cookie Munch sites (cbids) whose signed consent events this org keeps. An event for any other site is acknowledged and dropped, since the org a delivery names is chosen by whoever made the link. Owner or admin. Audited.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/consent-partners/cookiemunch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "consent-partners",
+                "cookiemunch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sites\": [\n    \"acme-com-9f3k\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List received Cookie Munch consent events",
+          "request": {
+            "method": "GET",
+            "description": "Consent evidence from Cookie Munch, newest first: each `consent.recorded` and `consent.withdrawn` event for your registered sites, with the visitor's consent `stamp`, the `choices` (and for a withdrawal, the `withdrawn` categories), and the id of the key that signed it. Filter by `stamp` to see one visitor's history; with `stamp`, `checks` lists what Cookie Munch said about it (newest first, `credited` only for `consented`). Append-only.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/consent-partners/cookiemunch/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "consent-partners",
+                "cookiemunch",
+                "events"
+              ],
+              "query": [
+                {
+                  "key": "stamp",
+                  "value": "",
+                  "description": "Only this visitor's consent stamp.",
+                  "disabled": true
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Check a visitor's consent stamp with Cookie Munch",
+          "request": {
+            "method": "POST",
+            "description": "Asks Cookie Munch (`GET /v1/partner/sites/{cbid}/stamps/{stamp}`) what the visitor's consent stamp says on your registered site (`cbid`, or each registered site in turn) and keeps the answer. `verdict`: `consented` (found, with the `referrals` category on: the only verdict that credits a referral's consent), `not_consented`, `withdrawn` (a later decision turned `referrals` off: `withdrawnAt`), `not_found` (the site never recorded the stamp), `no_grant` (Cookie Munch's 403: the site has no live link to Referalli) or `error`. Clicks and consent events that carry a Cookie Munch stamp are checked the same way in the background. 409 when the partner token isn't configured or no site is registered. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/consent-partners/cookiemunch/stamps/check",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "consent-partners",
+                "cookiemunch",
+                "stamps",
+                "check"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stamp\": \"cm_7Hq2xK9pLm\",\n  \"cbid\": \"acme-com-9f3k\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Receive Cookie Munch consent events",
+          "request": {
+            "method": "POST",
+            "description": "Cookie Munch's partner deliveries of `consent.recorded` and `consent.withdrawn`, signed `CookieMunch-Partner-Signature: t=<unix seconds>,kid=<key id>,ed25519=<base64url>` over `<t>.<raw body>` with the key named in Cookie Munch's partner JWKS (300 s window). Kept once per Cookie Munch event id, for a site the org named by `externalId` registered; other events (`ping`) and other sites are acknowledged and ignored.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/webhooks/cookiemunch/consent",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhooks",
+                "cookiemunch",
+                "consent"
+              ]
             }
           }
         },
@@ -6279,6 +6650,72 @@
           }
         },
         {
+          "name": "Get a partner's stats",
+          "request": {
+            "method": "GET",
+            "description": "What the partner brought in, in one call: eligible clicks, referrals by status, converted customers (referred, not void, with at least one payment) and balances per currency. Pass `programId` to count one program only (an org shared by several products).\n\n**Auth:** an API key with `commissions:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/partners/:id/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "partners",
+                ":id",
+                "stats"
+              ],
+              "query": [
+                {
+                  "key": "programId",
+                  "value": "",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get a partner's referrer summary",
+          "request": {
+            "method": "GET",
+            "description": "Everything a referrer panel shows, in one call: the stats for one program (`programId` is required) plus the partner's current `code` there (the newest coupon, else the newest link's code) and `linkUrl` (null when they have only a coupon).\n\n**Auth:** an API key with `commissions:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/partners/:id/summary?programId=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "partners",
+                ":id",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "programId",
+                  "value": "",
+                  "disabled": false
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Approve due commissions",
           "request": {
             "method": "POST",
@@ -6374,6 +6811,202 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "Get the Stripe balance credit key status",
+          "request": {
+            "method": "GET",
+            "description": "Whether the Stripe balance credit rail has a key: its own (`source: \"stripe_credits\"`) or your Stripe payout connection (`source: \"payout_connection\"`). The key is never returned.\n\n**Auth:** an API key with `payouts:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/stripe-credits/connection",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "stripe-credits",
+                "connection"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Connect a Stripe key for balance credits",
+          "request": {
+            "method": "PUT",
+            "description": "Stores your own Stripe restricted key (`rk_…`, with Customers write) for the balance credit rail, encrypted and never echoed. Without one the rail uses the secret key of your Stripe payout connection, if any. Owner or admin, recent sign-in. Audited.\n\n**Auth:** an API key with `payouts:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/stripe-credits/connection",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "stripe-credits",
+                "connection"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"secretKey\": \"rk_live_51HxExampleKey\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Remove the Stripe balance credit key",
+          "request": {
+            "method": "DELETE",
+            "description": "Deletes the rail's own key. A Stripe payout connection, if any, is then used instead; with neither, queued credits fail until a key is connected. Owner or admin. Audited.\n\n**Auth:** an API key with `payouts:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/stripe-credits/connection",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "stripe-credits",
+                "connection"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get a program's Stripe balance credit settings",
+          "request": {
+            "method": "GET",
+            "description": "Whether settled lines of this program are credited to the partner's Stripe customer balance, how that customer is found (`referrerMatch`), and whether store-credit referee rewards are credited too. `keyConnected` says whether a Stripe key is available.\n\n**Auth:** an API key with `payouts:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/programs/:id/stripe-credits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "programs",
+                ":id",
+                "stripe-credits"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Set a program's Stripe balance credit settings",
+          "request": {
+            "method": "PUT",
+            "description": "Turns the rail on or off for a program. Each `commission.settled` line with method `merchant_credit` is credited to the referrer's Stripe customer balance; a later `commission.reversed` debits it back. `referrerMatch`: `billing_link` (the partner's externalRef is a `cus_…` id or is billing-linked to one), `metadata` (Stripe customer search on `metadata[metadataKey]` = the partner's externalRef) or `email` (the one Stripe customer with the partner's email). `refereeRewards: true` also credits `store_credit` referee rewards to the referred customer. Custom units (`x_…`) are never credited. Enabling needs a key (`409 stripe_key_required`). Owner or admin. Audited.\n\n**Auth:** an API key with `payouts:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/programs/:id/stripe-credits",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "programs",
+                ":id",
+                "stripe-credits"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"referrerMatch\": \"metadata\",\n  \"metadataKey\": \"user_id\",\n  \"refereeRewards\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List a program's Stripe balance credits",
+          "request": {
+            "method": "GET",
+            "description": "Every credit and debit the rail queued for this program, newest first: amount, Stripe customer, `status` (`pending`, `applied`, `no_customer`, `failed`, `canceled`), attempts, the Stripe balance transaction id once applied, and the last error. Unapplied rows are retried hourly, up to 24 tries.\n\n**Auth:** an API key with `payouts:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/programs/:id/stripe-credits/log",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "programs",
+                ":id",
+                "stripe-credits",
+                "log"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Items per page, 1 to 100 (default 50). From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+                  "disabled": true
+                },
+                {
+                  "key": "starting_after",
+                  "value": "",
+                  "description": "A cursor: the id of an item (the previous page's `next_cursor`); returns the items after it. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+                  "disabled": true
+                },
+                {
+                  "key": "ending_before",
+                  "value": "",
+                  "description": "A cursor: returns the items before this item id (the previous page). Not with `starting_after`. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+                  "disabled": true
+                },
+                {
+                  "key": "created[gte]",
+                  "value": "",
+                  "description": "Only items created at or after this time (ISO 8601), on lists of timestamped records. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+                  "disabled": true
+                },
+                {
+                  "key": "created[lte]",
+                  "value": "",
+                  "description": "Only items created at or before this time (ISO 8601), on lists of timestamped records. From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
+                  "disabled": true
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
             }
           }
         }
@@ -11368,7 +12001,7 @@
           "name": "Test an auth connection (signed protocol)",
           "request": {
             "method": "POST",
-            "description": "Proves the secret works: returns the connection, its program and org and the server time, to check clock skew. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** a signature (see above); no API key.",
+            "description": "Proves the secret works: returns the connection, its program and org, the server time (to check clock skew) and `capabilities` (`{ partners: true }`: user-chosen referral codes through `/partners`). Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** a signature (see above); no API key.",
             "header": [
               {
                 "key": "Content-Type",
@@ -11639,10 +12272,10 @@
           }
         },
         {
-          "name": "Exchange an install code",
+          "name": "Token endpoint: install codes, partner links, Atlas operator token exchange",
           "request": {
             "method": "POST",
-            "description": "Server to server: the platform trades the single-use code and its PKCE `code_verifier` for a new signed-protocol connection and its signing secret (returned only here). Installing again for the same instance keeps the connection and issues a new secret, the old one verifying for 24 hours. 401 for an unknown, used, expired or mismatched code. No authentication.\n\n**Auth:** none.",
+            "description": "Form-encoded or JSON, three grants. `authorization_code`: the platform trades the single-use one-click-install code and its PKCE `code_verifier` for a new signed-protocol connection and its signing secret (returned only here), plus a one-hour `access_token` scoped `connections:write webhooks:write` so the platform can require v2 signatures and register its sync webhook; installing again keeps the connection and issues a new secret, the old one verifying for 24 hours; 401 for an unknown, used, expired or mismatched code. `client_credentials`: a partner link's `client_id` and `client_secret` (HTTP Basic or the body), optional `scope` within the link's, for a one-hour `rat_…` bearer token. `urn:ietf:params:oauth:grant-type:token-exchange` (RFC 8693): `subject_token` = an Atlas operator access token from `atlas login` (issuer https://atlasauth.net, verified with its discovery document and JWKS, scope `atlas:operator`), `subject_token_type` access_token, `resource` = the org id; the Atlas account must sign in to a Referalli member of that org, and the token gets that role (owner: admin, admin: full, others: read), narrowed by `scope`. Errors follow RFC 6749 §5.2 (`{error, error_description}`). No authentication.\n\n**Auth:** none.",
             "header": [
               {
                 "key": "Content-Type",
@@ -11671,6 +12304,81 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "List partner links",
+          "request": {
+            "method": "GET",
+            "description": "Other products allowed to call this organization's API (REF-S28), newest first, with status, scopes and last use. Secrets are never shown again. Owners and admins, or a key with team:read.\n\n**Auth:** an API key with `team:read` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/product-links",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "product-links"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create a partner link",
+          "request": {
+            "method": "POST",
+            "description": "`{partner, name?, scopes[], expires_at?}` (Unix ms or ISO 8601, at most a year; default a year; never \"never\"). Scopes are resource scopes (`integrations:write`, `partners:read`, …) or `connections:read|write` (the auth-platform connection routes only, what Atlas asks for); never admin, full or team. Returns `client_id` and `client_secret` once; the partner swaps them at POST /v1/oauth/token (client_credentials) or sends the secret as a bearer. A root action: an API key cannot hand out more than it holds, and an Atlas operator token needs an MFA sign-in at most 5 minutes old (403 `step_up_required` otherwise).\n\n**Auth:** an API key with `team:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/product-links",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "product-links"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revoke a partner link",
+          "request": {
+            "method": "DELETE",
+            "description": "The link and every token issued from it stop at once. A root action (see create).\n\n**Auth:** an API key with `team:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/product-links/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "product-links",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
             }
           }
         }
@@ -12716,7 +13424,7 @@
           "name": "Get the hosted-page consent and chat",
           "request": {
             "method": "GET",
-            "description": "What runs on the pages Referalli hosts for you on your own portal domain (the partner portal and `/join`): your consent banner (Cookie Munch, OneTrust, Cookiebot, Usercentrics, Didomi, Osano, Termly, iubenda, a custom CMP, a built-in necessary-only notice, or none) and your support chat (Chatly, Intercom, Crisp or custom). `served` is exactly what visitors get: the head tags, the \"Cookie settings\" link and the Content-Security-Policy built from these adapters. Referalli's own banner and chat never run on your domain.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "description": "What runs on the pages Referalli hosts for you on your own portal domain (the partner portal and `/join`): your consent banner (Cookie Munch, OneTrust, Cookiebot, Usercentrics, Didomi, Osano, Termly, iubenda, CookieYes, TrustArc, Ketch, Transcend, CookieFirst, consentmanager, Cookie Information, CookieScript, CookieHub, Google Privacy & messaging, Axeptio, Sourcepoint, InMobi Choice, Securiti, Enzuzo, CookiePro, TrustCommander, Klaro, Civic Cookie Control, a custom CMP, a built-in necessary-only notice, or none) and your support chat (Chatly, Intercom, Crisp, Zendesk Messaging, HubSpot, Drift, LiveChat, Tawk.to, Freshchat, Tidio, Help Scout Beacon, Front, Chatwoot, Olark, Smartsupp, JivoChat, Gorgias, Pylon, Plain, Userlike, Zoho SalesIQ, Re:amaze, Chatra, Kustomer, Gladly, Brevo, Trengo, Dixa, Gist, Freshdesk, LiveAgent, Chatbase, Voiceflow, Botpress, Salesforce, Dynamics 365 or custom). `adapters.consent[].fields` are the `config.params` a CMP's inline snippet needs. `adapters.chat[].fields` lists each chat's config keys; `chat.hasIdentitySecret` says whether an identity-verification secret is saved (never the secret). `served` is exactly what visitors get: the head tags, the \"Cookie settings\" link and the Content-Security-Policy built from these adapters. Referalli's own banner and chat never run on your domain.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/org/hosted-pages",
@@ -12735,7 +13443,7 @@
           "name": "Set the hosted-page consent and chat",
           "request": {
             "method": "PUT",
-            "description": "Validates and saves the adapters. A CMP's `scriptUrl` must be https on that vendor's own hosts; `custom` needs every origin listed. `customOrigins` adds origins per CSP directive (https or wss, no wildcards, no keywords). Owner or admin. Audited.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "description": "Validates and saves the adapters. A CMP's `scriptUrl` must be https on that vendor's own hosts; `custom` needs every origin listed; every chat vendor also takes `origins` for hosts its account needs beyond the documented list. `chat.identitySecret` (write-only, sealed) is your chat vendor's identity-verification secret, used to sign partners in to your chat: a string sets it, `null` removes it, absent keeps it, and switching vendors drops it. `customOrigins` adds origins per CSP directive (https or wss, no wildcards, no keywords). Owner or admin. Audited.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -12781,6 +13489,296 @@
                 "hosted-pages",
                 "check"
               ]
+            }
+          }
+        },
+        {
+          "name": "Get the portal design",
+          "request": {
+            "method": "GET",
+            "description": "The partner portal's look and layout on your portal domain: `published` (what partners see) and `draft` (what you are editing, or null). Colours with a separate dark palette, the colour scheme, widths and density, fonts (a stylesheet URL, `@font-face` files, a family per role, the type scale), the logo set and favicon, component shape (radius, shadow, buttons, inputs, focus ring, links), an announcement, the header and footer, the home sections and navigation, the sign-in page, interface string overrides, typed theme settings, CSS snippets, custom CSS, phone tuning and embedding. Every key is optional; an unset key keeps the built-in look.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get the portal design schema",
+          "request": {
+            "method": "GET",
+            "description": "Every key the portal design takes, as JSON Schema (draft 2020-12): build an editor or validate a theme file before you send it.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/schema",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "schema"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Preview the compiled portal design",
+          "request": {
+            "method": "GET",
+            "description": "The draft (or `?which=published`) compiled: `css`, the stylesheet partners load, and `view`, the layout, brand and text the portal draws. For a live preview in your own editor.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/compiled",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "compiled"
+              ],
+              "query": [
+                {
+                  "key": "which",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Replace the portal design draft",
+          "request": {
+            "method": "PUT",
+            "description": "Replaces the whole draft: keys you leave out are gone. Unknown keys are refused with 422 naming each one by its full path. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "draft"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Change part of the portal design draft",
+          "request": {
+            "method": "PATCH",
+            "description": "Deep-merges into the draft (or, with no draft, into a copy of what is published): objects merge key by key, arrays and values replace, `null` deletes a key. The result is validated as a whole. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "draft"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"primaryColor\": \"#4f46e5\",\n  \"paletteDark\": {\n    \"background\": \"#0b1020\"\n  },\n  \"portal\": {\n    \"navigation\": {\n      \"hidden\": [\n        \"financing\",\n        \"marketplace\"\n      ]\n    }\n  },\n  \"chrome\": {\n    \"footer\": {\n      \"showPoweredBy\": false\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Discard the portal design draft",
+          "request": {
+            "method": "DELETE",
+            "description": "Drops the draft and its preview link. What partners see is unchanged. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/draft",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "draft"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Publish the portal design",
+          "request": {
+            "method": "POST",
+            "description": "Makes the draft what partners see (within a minute), keeps it as a version you can restore, and retires the preview link. Optional `note`. Owner or admin. Audited.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/publish",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "publish"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "List published portal designs",
+          "request": {
+            "method": "GET",
+            "description": "The last 50 published versions, newest first.\n\n**Auth:** an API key with `org:read` (or `full`), or a session of any role.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "versions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Restore a portal design version",
+          "request": {
+            "method": "POST",
+            "description": "Copies a published version into the draft; publish it to make it live again. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/versions/:id/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "versions",
+                ":id",
+                "restore"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get a preview link for the portal design draft",
+          "request": {
+            "method": "POST",
+            "description": "A link that shows the draft on your verified portal domain (`?themePreview=rpv_…`) for 7 days, to anyone who has it; minting another retires the last. Partners without the link keep seeing the published design. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "preview"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Import a brand file into the portal design",
+          "request": {
+            "method": "POST",
+            "description": "A W3C design-tokens (DTCG) brand file, sent as `document` or fetched from an https `url`, merged into the draft: colours (`color.primary`, `color.background`, `color.surface`, `color.text`, `color.muted`, `color.border`, status colours), fonts (`font.body`, `font.heading`, `font.mono`, `font.url`), `radius.base`, `logo.url` and `brand.name`. `applied` lists the tokens used. Owner or admin.\n\n**Auth:** an API key with `org:write` (or `full`), or a session with role `owner`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/portal/theme/import-brand",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "portal",
+                "theme",
+                "import-brand"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         }
@@ -14588,6 +15586,84 @@
           }
         },
         {
+          "name": "List your partner API tokens",
+          "request": {
+            "method": "GET",
+            "description": "Your active `rpt_` tokens (never the token itself). Portal session only: a token cannot list tokens.\n\n**Auth:** a partner session.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/partner/api-tokens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "partner",
+                "api-tokens"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create a partner API token",
+          "request": {
+            "method": "POST",
+            "description": "A token for calling the partner API from your own code, across every programme you're in: `Authorization: Bearer rpt_…`. `read` reaches your profile, stats, links, referrals, payouts, achievements, assets, groups, contracts, deals, disputes, notifications, invitations, recruiting, terms and KYC status; `write` also creates links, deals and disputes and marks notifications read. Security, profile and payout details, KYC, contracts, advances and tax documents stay portal-only. Shown once. Portal session only, with `x-totp-code` when two-factor is on; at most 10 active.\n\n**Auth:** a partner session.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/partner/api-tokens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "partner",
+                "api-tokens"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Newsletter automation\",\n  \"scopes\": [\n    \"read\"\n  ],\n  \"expiresInDays\": 90\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Revoke a partner API token",
+          "request": {
+            "method": "DELETE",
+            "description": "Stops the token at once. Portal session only.\n\n**Auth:** a partner session.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/partner/api-tokens/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "partner",
+                "api-tokens",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Browse the marketplace",
           "request": {
             "method": "GET",
@@ -15769,6 +16845,83 @@
       "description": "Provider-facing receivers outside `/v1`, each verified with its own signature scheme.",
       "item": [
         {
+          "name": "Answer a partner's question for Referalli's own support desk",
+          "request": {
+            "method": "GET",
+            "description": "Called by Chatly's `referral_answers` preset, never by you: a signed GET (`x-chatly-signature: t=…,v1=…`, HMAC-SHA256 with `CHATLY_TOOL_SECRET` over `<t>.GET.<path and query>.`, 300 s window) with `question` (`referral_link`, `commission_status`, `next_payout`; others get the full answer), `subject` (the verified Atlas `sub`) and `principal` (`partner`, or absent when the tool was created over the API). Read-only: the partner's link, pending, approved and paid commission and next payout in every programme they're in. `{found: false}` when no partner account is linked; 403 without a verified partner identity; 404 for a bad or stale signature.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/platform/chatly-answers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "platform",
+                "chatly-answers"
+              ],
+              "query": [
+                {
+                  "key": "subject",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "principal",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "question",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Render the card for Referalli's own support desk",
+          "request": {
+            "method": "POST",
+            "description": "Called by Chatly for Referalli's own support workspace, signed `x-chatly-signature` with `CHATLY_PLATFORM_CARD_SECRET`. Names the person by the verified Atlas identity (`iss`, `sub`, `principal`), or by `contact.externalId` (`merchant:<user id>` / `partner:<account id>`), and answers one card across every programme they're in: a partner's status, balances and next payout per programme, or a merchant's organizations and roles. Unknown people get `blocks: null`; a bad or stale signature answers 404.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/support/platform/chatly-card",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "support",
+                "platform",
+                "chatly-card"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
           "name": "Render a support card for a tool",
           "request": {
             "method": "POST",
@@ -15859,6 +17012,50 @@
                   "value": ""
                 }
               ]
+            }
+          }
+        },
+        {
+          "name": "Mint an executor key under a Cookie Munch partner link",
+          "request": {
+            "method": "POST",
+            "description": "Called by Cookie Munch, not by you (CMU-X25): mints (or rotates) this org's cm-standard-v2 executor key so Cookie Munch's `referalli` executor preset can connect without a pasted key. The request must be signed by Cookie Munch's partner key exactly like its consent deliveries: `CookieMunch-Partner-Signature: t=<unix seconds>,kid=<key id>,ed25519=<base64url>` over `<t>.<raw body>`, with the key named in `https://api.cookiemunch.net/v1/partner/jwks.json` (300 s window; each signed request and each body `nonce` works once, a replay is 409; `partner` must be `referalli` and `externalId` the org in the path). Referalli then confirms the partner link with Cookie Munch over its own partner token (`GET /v1/partner/links`): it must be `active` or `waiting_on_partner`, name this org as `externalId`, sit on a site this org registered (`PUT /v1/org/consent-partners/cookiemunch`), and match `cbid`/`linkId` when sent; otherwise 403 `no_grant`. 201 `{secret, executorUrl, contract, orgId, linkId, cbid, rotated}`: `secret` is shown once and is the bearer key for `executorUrl` (`https://referalli.com/api`, the cm-standard-v2 baseUrl: calls go to `<executorUrl>/privacy/*`), where it reaches only this org's referred customers and partners. The old key stops working at once. Audited (`privacy.executor_key_minted`).\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/orgs/:orgId/privacy/executor-key",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "orgs",
+                ":orgId",
+                "privacy",
+                "executor-key"
+              ],
+              "variable": [
+                {
+                  "key": "orgId",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cbid\": \"acme-com-9f3k\",\n  \"linkId\": \"pl_01JB2X9R7C\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         },
@@ -16062,7 +17259,7 @@
           "name": "Find a Referalli account for a data-rights request",
           "request": {
             "method": "POST",
-            "description": "Called by Cookie Munch, which runs Referalli's own data-rights requests (Referalli as the controller for its merchant users and partner accounts). Bearer `REFERALLI_PRIVACY_KEY`; without it, or with a wrong one, the route answers 404 as if absent. Always 200: `{subjectId, status: \"found\"}` or `{subjectId: null, status: \"no_match\"}`. Answers carry `X-Version`.\n\n**Auth:** a signature (see above); no API key.",
+            "description": "Called by Cookie Munch, which runs Referalli's own data-rights requests (Referalli as the controller for its merchant users and partner accounts). Bearer `REFERALLI_PRIVACY_KEY`. Two contracts on one path. **cm-standard-v1:** `{email}`; without the key, or with a wrong one, the route answers 404 as if absent. **cm-standard-v2** (`X-Version: 2`): `{emails, identity?}` (`atlas` is accepted for `identity`); the identity's `iss`+`sub` is matched first, then `ext` (a Referalli account id), then the emails, and an email never reaches an account that belongs to a different identity; Cookie Munch's canary (`canary-<16 hex>@canary.cookiemunch.net`) is a synthetic subject that is always found; a missing or wrong key is 401. Always 200: `{subjectId, status: \"found\"}` or `{subjectId: null, status: \"no_match\"}`. Answers carry `X-Version` (v2: `2`). Under v2 a merchant's own executor key (`rxk2_…`, minted under its Cookie Munch partner link: `POST /v1/orgs/{orgId}/privacy/executor-key`) works on these same paths for that merchant's referred customers and partners only, found by email.\n\n**Auth:** a signature (see above); no API key.",
             "header": [
               {
                 "key": "Content-Type",
@@ -16095,10 +17292,10 @@
           }
         },
         {
-          "name": "Open an access or deletion request",
+          "name": "Open a data-rights request",
           "request": {
             "method": "POST",
-            "description": "`{subjectId, type: access|deletion}` from the lookup. Access is `completed` at once (the export is built when polled). Deletion is `pending` until the sign-in provider's erasure grace period ends (`eta`), or `rejected` with a `detail` when it can't run safely (the account is an organization's only owner, or commissions are still owed). An `Idempotency-Key` retry gets the first answer.\n\n**Auth:** a signature (see above); no API key.",
+            "description": "**v1:** `{subjectId, type: access|deletion}`. Access is `completed` at once (the export is built when polled). Deletion is `pending` until the sign-in provider's erasure grace period ends (`eta`, REFERALLI_PRIVACY_ERASURE_DELAY_DAYS), or `rejected` with a `detail` when it can't run safely (the account is an organization's only owner, or commissions are still owed). An `Idempotency-Key` retry gets the first answer. **v2** (`X-Version: 2`, `Idempotency-Key` required): `{subjectId, type, executeAfter?, caseId, reason?}`; `type` takes the aliases (`export`, `erase`, `erasure`) and every answer says `canonicalType`. A deletion or closure is `scheduled` until `executeAfter` (without one, the configured delay) with `eta` equal to it; a due one runs at once and ends `completed` or `completed_with_retention` (`retention[]`: a partner's commission and payout ledger stays with each merchant program). `restriction` and `rectification` are `rejected` with the reason. 201; `400 {error, field}` for a bad body; the same key with a different body is 409.\n\n**Auth:** a signature (see above); no API key.",
             "header": [
               {
                 "key": "Content-Type",
@@ -16134,7 +17331,7 @@
           "name": "Poll a data-rights request",
           "request": {
             "method": "GET",
-            "description": "The request status: `pending`, `completed` (with the export inline as `result` for access), `no_match` or `rejected`. A deletion past its `eta` is carried out on this call. Ids are signed; a forged one is 404.\n\n**Auth:** a signature (see above); no API key.",
+            "description": "The request status (v1: `pending`, `completed` with the export inline as `result` for access, `no_match` or `rejected`; v2: the Request). A deletion past its date is carried out on this call. A request opened under v1 can be polled under v2. Unknown ids are 404.\n\n**Auth:** a signature (see above); no API key.",
             "header": [],
             "auth": {
               "type": "noauth"
@@ -16149,6 +17346,36 @@
                 "privacy",
                 "requests",
                 ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Cancel a data-rights request (cm-standard-v2)",
+          "request": {
+            "method": "POST",
+            "description": "Withdraws a request before it runs: `cancelled`, and nothing is changed. Cancelling again answers the same. A request that already ran (or an access request, which completes at once) is 409; an unknown id is 404. Also works for a v1 deletion still inside its delay.\n\n**Auth:** a signature (see above); no API key.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/privacy/requests/:id/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "privacy",
+                "requests",
+                ":id",
+                "cancel"
               ],
               "variable": [
                 {
