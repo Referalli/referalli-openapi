@@ -1467,6 +1467,13 @@ components:
             - $ref: "#/components/schemas/ValueMapping"
             - type: "null"
           description: "Where cash / credit / discount / cost live in this connection's payload; null uses the built-in extractor."
+        maxAmountMinor:
+          anyOf:
+            - type: "integer"
+              minimum: -9007199254740991
+              maximum: 9007199254740991
+            - type: "null"
+          description: "A payment above this is held for release. null: the default, 1,000,000,000 minor units."
         filter:
           anyOf:
             - $ref: "#/components/schemas/BillingFilter"
@@ -1511,6 +1518,7 @@ components:
         - "needsCredentials"
         - "hasCredentials"
         - "valueMapping"
+        - "maxAmountMinor"
         - "filter"
         - "rotation"
     CreatedBillingConnection:
@@ -1622,7 +1630,8 @@ components:
             - "processed"
             - "ignored_by_filter"
             - "parked"
-          description: "ignored_by_filter: recorded, never processed (product filter or internal customer). parked: a refund or dispute waiting up to 7 days for its payment."
+            - "held"
+          description: "held: a payment over the connection limit or dated in the future; it earns nothing until released with POST /v1/billing/events/{id}/release. ignored_by_filter: recorded, never processed (product filter or internal customer). parked: a refund or dispute waiting up to 7 days for its payment."
         parkedUntil:
           anyOf:
             - type: "string"
@@ -1639,6 +1648,8 @@ components:
                 - "no_referral_in_scope"
                 - "identity_unresolved"
                 - "identity_ambiguous"
+                - "amount_over_limit"
+                - "occurred_in_future"
             - type: "null"
           description: "Why it earned nothing. no_referral_in_scope (status processed): the customer is referred only in programs outside the connection's programIds. identity_unresolved / identity_ambiguous (status processed): the customer had no customerRef and an auth connection with resolveBillingCustomers matched no user, or several."
         catalog:
@@ -4606,6 +4617,8 @@ components:
           properties:
             customerRef:
               type: "string"
+            customerRefHash:
+              type: "string"
             partnerId:
               type: "string"
         programId:
@@ -6486,6 +6499,67 @@ components:
         - "createdAt"
         - "data"
       description: "A billing event was recorded: the `billing_event.recorded` delivery body."
+    BillingEventHeldEventData:
+      type: "object"
+      properties:
+        billingEventId:
+          type: "string"
+          description: "The payment."
+        reason:
+          type: "string"
+          enum:
+            - "amount_over_limit"
+            - "occurred_in_future"
+        customerRef:
+          type: "string"
+        invoiceRef:
+          type: "string"
+        currency:
+          type: "string"
+          description: "Lowercase ISO 4217 code."
+          examples:
+            - "usd"
+        amountMinor:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: "Integer minor units (cents)."
+      required:
+        - "billingEventId"
+        - "reason"
+        - "customerRef"
+        - "invoiceRef"
+        - "currency"
+        - "amountMinor"
+      description: "`data` of a `billing_event.held` event: A payment over its connection's `maxAmountMinor`, or dated more than a day ahead, earned nothing and waits for POST /v1/billing/events/{id}/release."
+    BillingEventHeldEvent:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          description: "The event id (`evt_…`); the same event delivered to several endpoints has the same id."
+        topic:
+          type: "string"
+          const: "billing_event.held"
+        orgId:
+          type: "string"
+        livemode:
+          type: "boolean"
+          description: "false for events from test mode."
+        createdAt:
+          type: "string"
+          format: "date-time"
+          pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        data:
+          $ref: "#/components/schemas/BillingEventHeldEventData"
+      required:
+        - "id"
+        - "topic"
+        - "orgId"
+        - "livemode"
+        - "createdAt"
+        - "data"
+      description: "A payment was held for review: the `billing_event.held` delivery body."
     BillingEventExpiredEventData:
       type: "object"
       properties:
@@ -10697,38 +10771,7 @@ components:
         results:
           type: "array"
           items:
-            type: "object"
-            properties:
-              duplicate:
-                type: "boolean"
-              billingEventId:
-                anyOf:
-                  - type: "string"
-                  - type: "null"
-              conversions:
-                type: "integer"
-                minimum: -9007199254740991
-                maximum: 9007199254740991
-              linesCreated:
-                type: "integer"
-                minimum: -9007199254740991
-                maximum: 9007199254740991
-              reversals:
-                type: "integer"
-                minimum: -9007199254740991
-                maximum: 9007199254740991
-              ignored:
-                description: "Recorded as ignored_by_filter: earned nothing."
-                type: "string"
-                enum:
-                  - "filter"
-                  - "internal_customer"
-            required:
-              - "duplicate"
-              - "billingEventId"
-              - "conversions"
-              - "linesCreated"
-              - "reversals"
+            $ref: "#/components/schemas/PostBillingEventsIdReleaseResponse"
       required:
         - "received"
         - "results"
@@ -10861,6 +10904,45 @@ components:
         - "data"
         - "has_more"
         - "next_cursor"
+    PostBillingEventsIdReleaseResponse:
+      type: "object"
+      properties:
+        duplicate:
+          type: "boolean"
+        billingEventId:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        conversions:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        linesCreated:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        reversals:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        ignored:
+          description: "Recorded as ignored_by_filter: earned nothing."
+          type: "string"
+          enum:
+            - "filter"
+            - "internal_customer"
+        held:
+          description: "Recorded as held: earns nothing until released."
+          type: "string"
+          enum:
+            - "amount_over_limit"
+            - "occurred_in_future"
+      required:
+        - "duplicate"
+        - "billingEventId"
+        - "conversions"
+        - "linesCreated"
+        - "reversals"
     PostBillingInternalCustomersResponse:
       type: "object"
       properties:
@@ -16477,6 +16559,9 @@ components:
         pseudonym:
           description: "Erasure by customerRef."
           type: "string"
+        alreadyErased:
+          description: "True when this customerRef was erased by an earlier request: a retry succeeds."
+          type: "boolean"
         partners:
           type: "array"
           items:
@@ -23644,38 +23729,7 @@ components:
         results:
           type: "array"
           items:
-            type: "object"
-            properties:
-              duplicate:
-                type: "boolean"
-              billingEventId:
-                anyOf:
-                  - type: "string"
-                  - type: "null"
-              conversions:
-                type: "integer"
-                minimum: -9007199254740991
-                maximum: 9007199254740991
-              linesCreated:
-                type: "integer"
-                minimum: -9007199254740991
-                maximum: 9007199254740991
-              reversals:
-                type: "integer"
-                minimum: -9007199254740991
-                maximum: 9007199254740991
-              ignored:
-                description: "Recorded as ignored_by_filter: earned nothing."
-                type: "string"
-                enum:
-                  - "filter"
-                  - "internal_customer"
-            required:
-              - "duplicate"
-              - "billingEventId"
-              - "conversions"
-              - "linesCreated"
-              - "reversals"
+            $ref: "#/components/schemas/PostBillingEventsIdReleaseResponse"
       required:
         - "received"
         - "results"
@@ -36137,6 +36191,12 @@ paths:
                       items:
                         type: "string"
                     - type: "null"
+                maxAmountMinor:
+                  anyOf:
+                    - type: "integer"
+                      exclusiveMinimum: 0
+                      maximum: 9007199254740991
+                    - type: "null"
       responses:
         "200":
           description: "OK"
@@ -36766,6 +36826,7 @@ paths:
               - "processed"
               - "ignored_by_filter"
               - "parked"
+              - "held"
         - name: "limit"
           in: "query"
           required: false
@@ -36838,6 +36899,62 @@ paths:
         - "billing:write"
         - "read"
         - "full"
+        - "admin"
+  "/v1/billing/events/{id}/release":
+    post:
+      operationId: "postV1BillingEventsIdRelease"
+      summary: "Release a held payment"
+      description: "A payment over its connection's `maxAmountMinor` (default 1,000,000,000 minor units), or dated more than a day ahead, is recorded with `status: \"held\"` and earns nothing. Releasing it says it is real: it earns as it would have on arrival, and any refund that waited for it applies.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`."
+      tags:
+        - "Billing connections"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PostBillingEventsIdReleaseResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "billing:write"
+      x-scopes:
+        - "billing:write"
+        - "full"
+        - "admin"
+      x-roles:
+        - "owner"
         - "admin"
   "/v1/billing/internal-customers":
     get:
@@ -63516,6 +63633,62 @@ webhooks:
                 customerRef: "cus_test_123"
                 currency: "usd"
                 amountMinor: 9900
+      responses:
+        "200":
+          description: "Received. Any 2xx acknowledges the delivery."
+      security: []
+  billing_event.held:
+    post:
+      operationId: "webhookBillingEventHeld"
+      summary: "A payment was held for review"
+      description: "A payment over its connection's `maxAmountMinor`, or dated more than a day ahead, earned nothing and waits for POST /v1/billing/events/{id}/release.\n\nPOSTed to every active webhook endpoint subscribed to `billing_event.held` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days."
+      tags:
+        - "Webhooks"
+      parameters:
+        - name: "webhook-id"
+          in: "header"
+          required: true
+          description: "The delivery id; the same on every retry and replay. Deduplicate on it."
+          schema:
+            type: "string"
+        - name: "webhook-timestamp"
+          in: "header"
+          required: true
+          description: "When this attempt was signed, in unix seconds. Reject it when more than 5 minutes from your clock."
+          schema:
+            type: "integer"
+        - name: "webhook-signature"
+          in: "header"
+          required: true
+          description: "`v1,` plus the base64 HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}`, keyed with the base64-decoded secret after `whsec_`. During a rotation, two signatures separated by a space."
+          schema:
+            type: "string"
+        - name: "x-referalli-topic"
+          in: "header"
+          required: true
+          description: "The event topic, as in the body. The legacy header names from before the rename are also sent, with identical values, for existing integrations."
+          schema:
+            type: "string"
+            const: "billing_event.held"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/BillingEventHeldEvent"
+            example:
+              id: "evt_01JB2XH8J9K0L1M2N3P4Q5R6S7"
+              topic: "billing_event.held"
+              orgId: "org_01JB2X9P0A1B2C3D4E5F6G7H8J"
+              livemode: true
+              createdAt: "2026-10-21T15:04:05.123Z"
+              data:
+                billingEventId: "bev_01JB2XH8J9"
+                reason: "amount_over_limit"
+                customerRef: "cus_test_123"
+                invoiceRef: "in_test_123"
+                currency: "usd"
+                amountMinor: 1500000000
       responses:
         "200":
           description: "Received. Any 2xx acknowledges the delivery."

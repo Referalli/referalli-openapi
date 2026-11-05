@@ -8567,6 +8567,33 @@
           }
         },
         {
+          "name": "Release a held payment",
+          "request": {
+            "method": "POST",
+            "description": "A payment over its connection's `maxAmountMinor` (default 1,000,000,000 minor units), or dated more than a day ahead, is recorded with `status: \"held\"` and earns nothing. Releasing it says it is real: it earns as it would have on arrival, and any refund that waited for it applies.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/events/:id/release",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "events",
+                ":id",
+                "release"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "List internal customers",
           "request": {
             "method": "GET",
