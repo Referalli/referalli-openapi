@@ -625,7 +625,7 @@
           "name": "Get the current caller",
           "request": {
             "method": "GET",
-            "description": "Who is calling. With a user session: the user and their org memberships (no `x-org-id` needed). With an API key: `{ user: null, memberships: [], apiKey, org: { id, name } }`, where `apiKey` holds the key (name, prefix, scopes, pinned `apiVersion`, `livemode`, owner, expiry, `programIds`). The mode is `apiKey.livemode`; there is no top-level `livemode`.\n\n**Auth:** an API key with `team:read`, or a session of any role.\n\n**Scopes:** `team:read`, `team:write`, `read`, `full`, `admin`.",
+            "description": "Who is calling. With a user session: the user and their org memberships (no `x-org-id` needed). With an API key: `{ user: null, memberships: [], apiKey, org: { id, name } }`, where `apiKey` holds the key (name, prefix, scopes, pinned `apiVersion`, `livemode`, owner, expiry, `programIds`). The mode is `apiKey.livemode`; there is no top-level `livemode`. Any key may call it, whatever its scopes.\n\n**Auth:** an API key with `null`, or a session of any role.\n\n**Scopes:** .",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/me",
@@ -1357,6 +1357,25 @@
                   "language": "json"
                 }
               }
+            }
+          }
+        },
+        {
+          "name": "Both modes' tracking tokens",
+          "request": {
+            "method": "GET",
+            "description": "The org's public tracking values for live and test mode, labelled: `{ mode, live, test }`, each with `orgId`, `trackingToken`, `scriptUrl` (aff.js), `linkBaseUrl` (the verified link domain, else Referalli's origin) and `linkTemplate` (`…/go/{token}/{code}`). `mode` is the caller's. Any key reads both, live or test; nothing else crosses modes. The test org is created on first use.\n\n**Auth:** an API key with `org:read`, or a session of any role.\n\n**Scopes:** `org:read`, `org:write`, `read`, `full`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/org/tracking-tokens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "org",
+                "tracking-tokens"
+              ]
             }
           }
         },
@@ -2247,7 +2266,7 @@
           "name": "Create an API key",
           "request": {
             "method": "POST",
-            "description": "Mints a secret key (`rk_live_…` / `rk_test_…`), shown only in this response (and in its `Idempotency-Key` replay: a retry with the same key and body within 24 hours returns this response again, secret included, without minting another). `scopes` defaults to `full`; a key can't grant scopes it doesn't hold. `mode` picks live, test or a matching pair of both (`both` returns `{ pairId, live, test }`); a test-mode caller can mint test keys only. `publishable: true` mints a browser-safe `rk_pub_` key limited to `programs:read` and `events:write` from `allowedOrigins`. `apiVersion` pins the key to a version, or `latest` (the default) to the newest version at the time of the call; the pin never moves on its own (a key keeps answering in that version after newer ones ship) until you `PATCH` it or send a `referalli-version` header. A key pinned to `2026-10-21` gets every list as a capped plain array instead of the paginated envelope. `programIds` limits the key to those programs (their partners, links, referrals, commissions, enrollments, webhook endpoints whose `programIds` are all within the key's, with their deliveries, and billing connections likewise); a program-scoped key gets 403 `program_scoped_key` on org-wide endpoints (keys, team, org settings, the rest of billing, payouts, the event feed, analytics, creating programs). An `api_keys:mint` key may also call this (and no other key endpoint): it can't mint `admin` or `api_keys:mint` keys or scopes it doesn't hold, and a program-scoped one must send `programIds` within its own (`403` otherwise). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `api_keys:mint`, `full`, `admin`.",
+            "description": "Expiry is `expiresInDays` or `expiresAt` (ISO 8601, at most 3650 days out), not both. Mints a secret key (`rk_live_…` / `rk_test_…`), shown only in this response (and in its `Idempotency-Key` replay: a retry with the same key and body within 24 hours returns this response again, secret included, without minting another). `scopes` defaults to `full`; a key can't grant scopes it doesn't hold. `mode` picks live, test or a matching pair of both (`both` returns `{ pairId, live, test }`); a test-mode caller can mint test keys only. `publishable: true` mints a browser-safe `rk_pub_` key limited to `programs:read` and `events:write` from `allowedOrigins`. `apiVersion` pins the key to a version, or `latest` (the default) to the newest version at the time of the call; the pin never moves on its own (a key keeps answering in that version after newer ones ship) until you `PATCH` it or send a `referalli-version` header. A key pinned to `2026-10-21` gets every list as a capped plain array instead of the paginated envelope. `programIds` limits the key to those programs (their partners, links, referrals, commissions, enrollments, webhook endpoints whose `programIds` are all within the key's, with their deliveries, billing connections likewise, auth connections of those programs, and privacy lookup, export, forget and requests for people in those programs); a program-scoped key gets 403 `program_scoped_key` on org-wide endpoints (keys, team, org settings, the rest of billing, payouts, the event feed, analytics, creating programs). An `api_keys:mint` key may also call this (and no other key endpoint): it can't mint `admin` or `api_keys:mint` keys or scopes it doesn't hold, and a program-scoped one must send `programIds` within its own (`403` otherwise). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -2366,7 +2385,7 @@
           "name": "Update an API key",
           "request": {
             "method": "PATCH",
-            "description": "Changes a key's pinned `apiVersion`, `owner`, expiry (`expiresInDays` from now; `null` removes it) or `programIds` (`null` makes it org-wide); `apiVersion: \"latest\"` pins it to today's newest version. A new expiry re-arms the `api_key.expiring` notices. Revoked keys are 404. Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `full`, `admin`.",
+            "description": "Renames a key or changes its pinned `apiVersion`, `owner`, expiry (`expiresInDays` from now, or `expiresAt`, an ISO 8601 time at most 3650 days out, not both; `null` removes it) or `programIds` (`null` makes it org-wide); `apiVersion: \"latest\"` pins it to today's newest version. A new expiry re-arms the `api_key.expiring` notices. `name` renames it; `scopes` replaces its scopes. Revoked keys are 404. Needs an owner or admin session, or an API key with the `admin` scope. A key holding `api_keys:mint` may also do this for keys it minted itself (403 for any other), but only to narrow `scopes` and `programIds`, never widen them or make the key org-wide. Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -2405,7 +2424,7 @@
           "name": "Revoke an API key",
           "request": {
             "method": "DELETE",
-            "description": "Revokes a key at once. `cascade=true` also revokes every key it minted (and theirs); `pair=true` also revokes its live/test twin. Returns the revoked ids. Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `full`, `admin`.",
+            "description": "Revokes a key at once. `cascade=true` also revokes every key it minted (and theirs); `pair=true` also revokes its live/test twin. Returns the revoked ids. Needs an owner or admin session, or an API key with the `admin` scope. A key holding `api_keys:mint` may also do this for keys it minted itself (403 for any other). Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/api-keys/:id",
@@ -2444,7 +2463,7 @@
           "name": "Rotate an API key",
           "request": {
             "method": "POST",
-            "description": "Mints a replacement key with the same name, scopes, origins, version pin, owner, programs and lifetime (an expiring key's new expiry is the same length from now), returned once with `rotatedFrom: { id, expiresAt }`. The old key keeps working for `graceHours` (default 24, at most 168, 0 = stop now), then expires; it gets no `api_key.expiring` notice. An expired or revoked key can't be rotated (409 `api_key_expired` / 404). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `full`, `admin`.",
+            "description": "Mints a replacement key with the same name, scopes, origins, version pin, owner, programs and lifetime (an expiring key's new expiry is the same length from now), returned once with `rotatedFrom: { id, expiresAt }`. The old key keeps working for `graceHours` (default 24, at most 168, 0 = stop now), then expires; it gets no `api_key.expiring` notice. An expired or revoked key can't be rotated (409 `api_key_expired` / 404). Needs an owner or admin session, or an API key with the `admin` scope. A key holding `api_keys:mint` may also do this for keys it minted itself (403 for any other). Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -3008,7 +3027,7 @@
           "name": "Simulate billing history",
           "request": {
             "method": "POST",
-            "description": "Generates deterministic billing history through the real commission pipeline, so you can see commissions flow without a provider: a new sandbox customer referred to the partner, `months` (default 3) of subscription payments at `priceMinor`, then for `scenario: \"refund\"` a half refund of the first invoice or for `churn` a cancellation. Returns the customer and what was created. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+            "description": "Generates deterministic billing history through the real commission pipeline, so you can see commissions flow without a provider: a new sandbox customer referred to the partner, `months` (default 3) of subscription payments at `priceMinor`, then for `scenario: \"refund\"` a half refund of the first invoice or for `churn` a cancellation. Returns the customer and what was created. `scenario: \"signup_and_pay\"` (test mode only, `409 test_mode_only` otherwise) proves the whole loop instead: a sign-up of `customerRef` (default a new `cus_sandbox_…`) referred by `partnerId` (a click on their link) or by `code` (a link or coupon code), filed through auth connection `authConnectionId` exactly as its signed `POST /v1/auth/connections/{id}/signups` would file it (auto-enroll included) or, without one, as `POST /v1/referrals/associate`; then a provider-neutral `payment.paid` of `amountMinor` (default 4900) in `currency` (default USD) through billing connection `billingConnectionId` (default the org's only active one, else `409`), run through the same pipeline as `POST /v1/sandbox/billing-fixtures`. Answers `{ scenario, ok, steps: [signup, payment], commissions }`; a step that could not succeed answers `ok: false` with `notes` saying why (sign-up not credited, auth connection paused or in another program, billing connection `awaiting_secret`, paused or limited to other programs, payment ignored, program without a commission rule) rather than an error. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -3269,7 +3288,7 @@
           "name": "Create a program",
           "request": {
             "method": "POST",
-            "description": "Creates an affiliate program: its attribution model, cookie window, how long after sign-up a conversion still counts (`signupToConversionDays`, 1 to 1095, default 365; `cookieWindowDays` is 1 to 400, default 60), terms, public page and settings. `slug` is unique per org. Terms are versioned so partners can be asked to accept new ones. Over the plan's program limit this is `402 payment_required`.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`.",
+            "description": "Creates an affiliate program: its attribution model, cookie window, how long after sign-up a conversion still counts (`signupToConversionDays`, 1 to 1095, default 365; `cookieWindowDays` is 1 to 400, default 60), terms, public page and settings (`signupPaymentGraceMinutes`, 0 to 1440, default 5: how long before the referral's sign-up time a payment still earns). `slug` is unique per org. Terms are versioned so partners can be asked to accept new ones. `publicHandle` is unique across every org (check it first with `GET /v1/programs/handle-availability`). A taken `slug` or `publicHandle` is `409 conflict` with `details.field` naming it (`slug` or `publicHandle`). Over the plan's program limit this is `402 payment_required`.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -3353,6 +3372,32 @@
           }
         },
         {
+          "name": "Check a public handle",
+          "request": {
+            "method": "GET",
+            "description": "Whether `handle` can be set as a program's `publicHandle`, using the same rules as `POST`/`PATCH /v1/programs`: `available: false` with `reason: \"invalid\"` when it is not 3 to 48 characters of `a-z`, `0-9` and `-`, or `reason: \"taken\"` when any program (in any org, including your own) already has it. Handles are claimed only by setting them, so a free handle can still be taken before you do; the setter's `409` names `details.field: \"publicHandle\"`.\n\n**Auth:** an API key with `programs:read`, or a session of any role.\n\n**Scopes:** `programs:read`, `programs:write`, `read`, `full`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/programs/handle-availability?handle=",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "programs",
+                "handle-availability"
+              ],
+              "query": [
+                {
+                  "key": "handle",
+                  "value": "",
+                  "disabled": false
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Get a program",
           "request": {
             "method": "GET",
@@ -3381,7 +3426,7 @@
           "name": "Update a program",
           "request": {
             "method": "PATCH",
-            "description": "Changes any program field or setting; omitted fields keep their value, and `publicPage` is merged. Changing `termsMd` records a new terms version. Setting `status` to `paused` or `archived` stops new attribution. `mobileApp` (iOS Team ID and bundle id, Android package and signing-certificate fingerprints) publishes the program's apps in the universal-links and App Links files on the org's link hosts. `destinationUrl` moves the program's default link destination: every link still on the old default (the widget's or a sign-in connection's) is repointed in the same call, custom destinations stay, and links already shared follow at click time; `{code}` in it becomes the link's code. Audited.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`.",
+            "description": "Changes any program field or setting; omitted fields keep their value, and `publicPage` is merged. Changing `termsMd` records a new terms version. Setting `status` to `paused` or `archived` stops new attribution. `signupPaymentGraceMinutes` (0 to 1440, default 5) is how long before the referral's sign-up time a payment still earns. `mobileApp` (iOS Team ID and bundle id, Android package and signing-certificate fingerprints) publishes the program's apps in the universal-links and App Links files on the org's link hosts. `destinationUrl` moves the program's default link destination: every link still on the old default (the widget's or a sign-in connection's) is repointed in the same call, custom destinations stay, and links already shared follow at click time; `{code}` in it becomes the link's code. A `publicHandle` another program has is `409 conflict` with `details: { field: 'publicHandle' }`. Audited.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -4176,7 +4221,7 @@
           "name": "Get a program's public page",
           "request": {
             "method": "GET",
-            "description": "What a program's public join page shows: the program and merchant names, pitch, cookie window, terms, base commission, branding and whether joining is approved at once. No authentication; only active live programs with a `publicHandle` are found.\n\n**Auth:** none.",
+            "description": "What a program's public join page shows: the program and merchant names, pitch, cookie window, terms, base commission, branding and whether joining is approved at once. `terms` is the program's commission terms as `GET /v1/programs/{id}/terms` gives them (the rule's base, how long it recurs, hold and `summary` in each portal locale), or null when it has no rule yet; with `?locale=` or `Accept-Language` it also names the chosen `locale` and its sentence as `text`. No authentication; only active live programs with a `publicHandle` are found.\n\n**Auth:** none.",
             "header": [],
             "auth": {
               "type": "noauth"
@@ -4191,6 +4236,13 @@
                 "public",
                 "programs",
                 ":handle"
+              ],
+              "query": [
+                {
+                  "key": "locale",
+                  "value": "",
+                  "disabled": true
+                }
               ],
               "variable": [
                 {
@@ -5246,6 +5298,34 @@
           }
         },
         {
+          "name": "Get the tracking script config",
+          "request": {
+            "method": "GET",
+            "description": "What `aff.js` stores on the merchant's site, for consent tools that declare its cookie: `cookieWindowDays` (the default the same token's `aff.js` is served with, the longest cookie window of the org's active programs, 60 with none, 1 to 400), the cookie names and the localStorage keys. Answers whether or not any program has a public page, and holds nothing the script doesn't already reveal. No authentication, any origin, cached for 5 minutes. A tag's own `data-cookie-days` overrides the window on that page. Unknown tokens return 404.\n\n**Auth:** none.",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/t/:orgToken/config.json",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "t",
+                ":orgToken",
+                "config.json"
+              ],
+              "variable": [
+                {
+                  "key": "orgToken",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Follow a tracked link",
           "request": {
             "method": "GET",
@@ -5357,6 +5437,48 @@
                   "value": ""
                 }
               ]
+            }
+          }
+        },
+        {
+          "name": "Mint a hand-off token",
+          "request": {
+            "method": "POST",
+            "description": "Cookie-free hand-off: turns the visit's referral context (`anonId`, `clickId`, `code`, at least one) into a signed token your product keeps in its own session (a server session, a sign-up form field, a redirect across domains) and passes to `POST /v1/referrals/associate` as `handoffToken`. Valid for 24 hours and only for this org; it holds the same ids aff.js stores in its cookie, nothing personal. `aff.getHandoffToken()` calls it. CORS open to any origin. Unknown tokens return 404.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/t/:orgToken/handoff",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "t",
+                ":orgToken",
+                "handoff"
+              ],
+              "variable": [
+                {
+                  "key": "orgToken",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"anonId\": \"a_8f2c1d0e9b7a6c5d4e3f\",\n  \"clickId\": \"clk_01JB2X9Q4M7T0E1R2S3V4W5Y6Z\",\n  \"code\": \"dana\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         },
@@ -6247,7 +6369,7 @@
           "name": "Attribute a new customer",
           "request": {
             "method": "POST",
-            "description": "The key server-side call: tell Referalli a customer signed up, with whatever you know about where they came from (`referralToken`/`ref_click_id`, `anonId`, `couponCode`, `emailHash`, IP and user agent). The attribution engine picks the partner under the program's model and windows. `referral` is `null` when no partner matched (not an error); `reasoning.notes` says why. Repeating `idempotencyKey` returns the existing referral. `occurredAt` records a late call at the real sign-up time (up to 5 minutes of clock skew is tolerated) and backfills payments since. `emailDomain` lets burner-email sign-ups be held for review. Publishes `referral.created` (or `referral.held`).\n\n**Auth:** an API key with `referrals:write`, or a session of any role.\n\n**Scopes:** `referrals:write`, `full`, `admin`.",
+            "description": "The key server-side call: tell Referalli a customer signed up, with whatever you know about where they came from (`referralToken`/`ref_click_id`, `anonId`, `couponCode`, `emailHash`, IP and user agent). The attribution engine picks the partner under the program's model and windows. `referral` is `null` when no partner matched (not an error); `reasoning.notes` says why. Repeating `idempotencyKey` returns the existing referral. `occurredAt` records a late call at the real sign-up time (up to 5 minutes of clock skew is tolerated) and backfills payments since. `emailDomain` lets burner-email sign-ups be held for review. `handoffToken` (from `POST /t/{orgToken}/handoff` or `POST /v1/referrals/handoff-tokens`) fills `anonId`, `referralToken` and `couponCode` where they are not sent; a malformed, expired or other org's token is `400 invalid_handoff_token`. Publishes `referral.created` (or `referral.held`).\n\n**Auth:** an API key with `referrals:write`, or a session of any role.\n\n**Scopes:** `referrals:write`, `full`, `admin`.",
             "header": [
               {
                 "key": "Content-Type",
@@ -6268,6 +6390,39 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"programId\": \"prg_01JB2X9Q4M7T0E1R2S3V4W5Y6Z\",\n  \"customerRef\": \"cus_123\",\n  \"referralToken\": \"clk_01JB2X9Q4M7T0E1R2S3V4W5Y6Z\",\n  \"emailDomain\": \"example.com\",\n  \"idempotencyKey\": \"signup-cus_123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Mint a hand-off token",
+          "request": {
+            "method": "POST",
+            "description": "The server-side twin of `POST /t/{orgToken}/handoff`: signs `anonId`, `clickId` and/or `code` (at least one) into a token valid for 24 hours, for this org only, to pass later to `POST /v1/referrals/associate` as `handoffToken`. Use it when the server that saw the landing (`?ref_click_id=`) is not the one that files the sign-up.\n\n**Auth:** an API key with `referrals:write`, or a session of any role.\n\n**Scopes:** `referrals:write`, `full`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/referrals/handoff-tokens",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "referrals",
+                "handoff-tokens"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clickId\": \"clk_01JB2X9Q4M7T0E1R2S3V4W5Y6Z\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6692,7 +6847,7 @@
           "name": "Get a program's terms",
           "request": {
             "method": "GET",
-            "description": "The program's commission terms for product copy, from its latest commission rule version (`ruleVersion`): the `base` (`percentBps`, or `amountMinor` and `currency`), how long it recurs, the hold, and `summary.en`, an English sentence built deterministically from the rule, such as \"20% of every payment for 12 months\" or \"$50.00 for the first payment only\". Bounties are added (\", plus $5.00 per signup\"); rule conditions add \"(conditions apply)\"; overrides, tiers or new-vs-expansion rates set `ratesVary` and add \"(rates vary)\" rather than quote one rate. Partner-group rates and promotions are not included. Publishing a new rule version changes the terms on the next read. `404` when the program has no rule yet. Program-scoped keys read their own programs.\n\n**Auth:** an API key with `programs:read`, or a session of any role.\n\n**Scopes:** `programs:read`, `programs:write`, `read`, `full`, `admin`.",
+            "description": "The program's commission terms for product copy, from its latest commission rule version (`ruleVersion`): the `base` (`percentBps`, or `amountMinor` and `currency`), how long it recurs, the hold, and `summary`, the same sentence in each partner-portal locale (`en`, `es`, `de`, `fr`, `pt`, `it`, `nl`, `sv`, `ja`, `zh`), built deterministically from the rule, such as \"20% of every payment for 12 months\" or \"$50.00 for the first payment only\". Bounties are added (\", plus $5.00 per signup\"); rule conditions add \"(conditions apply)\"; overrides, tiers or new-vs-expansion rates set `ratesVary` and add \"(rates vary)\" rather than quote one rate. With `?locale=de` or an `Accept-Language` header the response also names the chosen `locale` and its sentence as `text` (an unsupported language gets `en`). Bounty event names are kept as written. Partner-group rates and promotions are not included. Publishing a new rule version changes the terms on the next read. `404` when the program has no rule yet. Program-scoped keys read their own programs.\n\n**Auth:** an API key with `programs:read`, or a session of any role.\n\n**Scopes:** `programs:read`, `programs:write`, `read`, `full`, `admin`.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/programs/:id/terms",
@@ -6704,6 +6859,13 @@
                 "programs",
                 ":id",
                 "terms"
+              ],
+              "query": [
+                {
+                  "key": "locale",
+                  "value": "",
+                  "disabled": true
+                }
               ],
               "variable": [
                 {
@@ -8095,6 +8257,140 @@
           }
         },
         {
+          "name": "Send events to a generic connection",
+          "request": {
+            "method": "POST",
+            "description": "The generic connection's webhook body (`{ \"events\": [...] }`, up to 500) sent with an API key instead of the connection's HMAC signature, so your server needs no second secret. Runs the same processing as `POST /webhooks/billing/{id}`: paid invoices become conversions and commissions, refunds and disputes reverse them, and each event is idempotent by `providerEventId` (a resend answers `duplicate: true`), whichever of the two routes sent it first. Needs `billing:write`; a program-scoped key reaches only connections limited to its own programs. `404` for an unknown, deleted or paused connection; `409 conflict` for a connection that isn't `generic` (those take their provider's webhooks).\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/connections/:id/events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "connections",
+                ":id",
+                "events"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"events\": [\n    {\n      \"providerEventId\": \"pay_8812\",\n      \"type\": \"invoice_paid\",\n      \"customerRef\": \"user_42\",\n      \"invoiceRef\": \"inv_8812\",\n      \"amountGross\": 4900,\n      \"currency\": \"usd\",\n      \"occurredAt\": \"2026-11-03T12:00:00Z\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Set a billing account's owner",
+          "request": {
+            "method": "PUT",
+            "description": "For products that bill an organization (a team, a workspace) rather than a person. `accountRef` is the id your billing events carry for the organization (the `customerRef` of a generic event, or the metadata value a connection's `customerRefMetadataKey` reads, e.g. `organization_id`); `ownerCustomerRef` is the user whose referral its payments earn for. From then on the account's payments earn for the owner's referral (unless a referral is filed under the account itself). The first owner set replays the account's earlier payments for that owner's referral. Changing the owner re-points the account's provider customers, so later payments earn for the new owner's referral; payments made before the change stay with the previous owner's referral. When the organization's id changed, call it under the new id with `previousAccountRef` (the old one) instead of, or as well as, `ownerCustomerRef`: the old id then follows the new one (payments still arriving under it earn for the new id's owner), and the owner carries over unless named. Returns `{ accountRef, ownerCustomerRef, previousOwnerCustomerRef, renamedFrom, deleted, changed, relinked, reprocessedPayments }`; the same call again answers `changed: false`. Publishes `billing_account.owner_changed`. Auth platforms with the `accounts` capability (Atlas) send this for you through `POST /v1/auth/connections/{id}/accounts`. Needs `billing:write`. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/accounts/:accountRef/owner",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "accounts",
+                ":accountRef",
+                "owner"
+              ],
+              "variable": [
+                {
+                  "key": "accountRef",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ownerCustomerRef\": \"user_42\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete a billing account",
+          "request": {
+            "method": "DELETE",
+            "description": "The organization was deleted: it has no owner from now on, and its provider customers stop resolving to the old owner, so later payments under it earn nothing. Commissions already earned stay, and refunds still reverse them. Setting an owner again restores it for later payments (payments made while it was deleted are not replayed). Returns the same shape as `PUT …/owner` with `deleted: true` and `ownerCustomerRef: null`; deleting an account with nothing recorded (or already deleted) answers `changed: false`. Publishes `billing_account.owner_changed`. Needs `billing:write`. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/accounts/:accountRef",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "accounts",
+                ":accountRef"
+              ],
+              "variable": [
+                {
+                  "key": "accountRef",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get a billing account's owner",
+          "request": {
+            "method": "GET",
+            "description": "What is recorded for a billing account: `{ accountRef, ownerCustomerRef, since, renamedTo, deleted }`. A renamed id answers with `renamedTo` (and `ownerCustomerRef: null`); it follows that account. `404` when nothing is recorded.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/billing/accounts/:accountRef",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "billing",
+                "accounts",
+                ":accountRef"
+              ],
+              "variable": [
+                {
+                  "key": "accountRef",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Set the value mapping",
           "request": {
             "method": "PUT",
@@ -8208,7 +8504,7 @@
           "name": "List billing events",
           "request": {
             "method": "GET",
-            "description": "Payments, refunds and other billing events received from every connection, newest first. Filter with `customerRef`, or `status=ignored_by_filter` for the events a product filter or the internal-customer list set aside (recorded, never processed). `ignoredReason: \"no_referral_in_scope\"` (with `status: \"processed\"`) marks a payment on a connection limited to some programs from a customer referred only in other programs: it earned nothing.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`.",
+            "description": "Payments, refunds and other billing events received from every connection, newest first. Filter with `customerRef`, or `status=ignored_by_filter` for the events a product filter or the internal-customer list set aside (recorded, never processed), or `status=parked` for the refunds and disputes waiting for their payment: applied when it arrives, or dropped after 7 days with a `billing_event.expired` webhook event. `ignoredReason: \"no_referral_in_scope\"` (with `status: \"processed\"`) marks a payment on a connection limited to some programs from a customer referred only in other programs: it earned nothing.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/billing/events",
@@ -12043,7 +12339,7 @@
           "name": "List auth connections",
           "request": {
             "method": "GET",
-            "description": "Auth-platform connections with provider, program, status, signature version and rotation state. Secrets are never returned.\n\n**Auth:** an API key with `integrations:read`, or a session of any role.\n\n**Scopes:** `integrations:read`, `integrations:write`, `connections:read`, `connections:write`, `read`, `full`, `admin`.",
+            "description": "Auth-platform connections with provider, program, status, signature version, rotation state and `lastSignupAt` (when it last filed a new sign-up; null when never). Secrets are never returned.\n\n**Auth:** an API key with `integrations:read`, or a session of any role.\n\n**Scopes:** `integrations:read`, `integrations:write`, `connections:read`, `connections:write`, `read`, `full`, `admin`.",
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/v1/auth/connections",
@@ -12111,6 +12407,98 @@
           }
         },
         {
+          "name": "Get an auth connection",
+          "request": {
+            "method": "GET",
+            "description": "One auth-platform connection, as in the list: provider, program, status, `allowedOrigins`, `tokenVerification` (without its secret), signature version and rotation state. Secrets are never returned. Unknown or deleted connections are 404.\n\n**Auth:** an API key with `integrations:read`, or a session of any role.\n\n**Scopes:** `integrations:read`, `integrations:write`, `connections:read`, `connections:write`, `read`, `full`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update an auth connection",
+          "request": {
+            "method": "PATCH",
+            "description": "Pauses or resumes a connection, renames it, changes `autoEnrollUsers` or the destination of auto-created links, turns `resolveBillingCustomers` on or off, or (signed-protocol connections) sets `signatureVersion`: `v2` to require request-line signatures, `v1+v2` to accept both again. `resolveBillingCustomers` (any provider, default false): a billing customer that arrives with no customerRef (no `referalli_customer_ref` metadata, no `customerRefMetadataKey` hit) in a program this connection serves (within the billing connection's `programIds`) is resolved through this connection's users: `referalli_user_id` or `<provider>_user_id` metadata naming a user it reported, else exactly one user whose current email is the customer's and verified. The billing link is recorded as metadata would record it; none or several matches record `ignoredReason: \"identity_unresolved\"` / `\"identity_ambiguous\"` on the billing event. Explicit metadata always wins. Matching uses only the org's own data. `tokenVerification` replaces the widget-session verifier (an HS256 secret is kept when `sharedSecret` is left out; `null` removes it) and `allowedOrigins` replaces the origin list. The auth platform itself can also call this path, signed with the connection secret and with only `allowedOrigins` in the body (no session), to set its origins; see `PUT /v1/auth/connections/{id}/origins`.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Delete an auth connection",
+          "request": {
+            "method": "DELETE",
+            "description": "Removes the connection; its webhook URL and signed endpoints stop accepting calls. Referrals it filed stay.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            }
+          }
+        },
+        {
           "name": "Set a vendor-issued secret",
           "request": {
             "method": "PUT",
@@ -12168,72 +12556,6 @@
                 "connections",
                 ":id",
                 "rotate-secret"
-              ],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": ""
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "Update an auth connection",
-          "request": {
-            "method": "PATCH",
-            "description": "Pauses or resumes a connection, renames it, changes `autoEnrollUsers` or the destination of auto-created links, turns `resolveBillingCustomers` on or off, or (signed-protocol connections) sets `signatureVersion`: `v2` to require request-line signatures, `v1+v2` to accept both again. `resolveBillingCustomers` (any provider, default false): a billing customer that arrives with no customerRef (no `referalli_customer_ref` metadata, no `customerRefMetadataKey` hit) in a program this connection serves (within the billing connection's `programIds`) is resolved through this connection's users: `referalli_user_id` or `<provider>_user_id` metadata naming a user it reported, else exactly one user whose current email is the customer's and verified. The billing link is recorded as metadata would record it; none or several matches record `ignoredReason: \"identity_unresolved\"` / `\"identity_ambiguous\"` on the billing event. Explicit metadata always wins. Matching uses only the org's own data. `tokenVerification` replaces the widget-session verifier (an HS256 secret is kept when `sharedSecret` is left out; `null` removes it) and `allowedOrigins` replaces the origin list.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/connections/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "connections",
-                ":id"
-              ],
-              "variable": [
-                {
-                  "key": "id",
-                  "value": ""
-                }
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Delete an auth connection",
-          "request": {
-            "method": "DELETE",
-            "description": "Removes the connection; its webhook URL and signed endpoints stop accepting calls. Referrals it filed stay.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`.",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/v1/auth/connections/:id",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "v1",
-                "auth",
-                "connections",
-                ":id"
               ],
               "variable": [
                 {
@@ -12444,7 +12766,7 @@
           "name": "Test an auth connection (signed protocol)",
           "request": {
             "method": "POST",
-            "description": "Proves the secret works: returns the connection, its program and org, the server time (to check clock skew) and `capabilities` (`{ partners: true }`: user-chosen referral codes through `/partners`). Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** a signature (see above); no API key.",
+            "description": "Proves the secret works: returns the connection, its program and org, the server time (to check clock skew) and `capabilities` (`{ partners: true, origins: true, accounts: true }`: user-chosen referral codes through `/partners`, setting `allowedOrigins` through `PUT …/origins` or a signed PATCH, and organization owners through `/accounts`). Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** a signature (see above); no API key.",
             "header": [
               {
                 "key": "Content-Type",
@@ -12465,6 +12787,94 @@
                 "connections",
                 ":id",
                 "ping"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Set a connection's allowed origins (signed protocol)",
+          "request": {
+            "method": "PUT",
+            "description": "The `origins` capability: the auth platform replaces this connection's own `allowedOrigins` (the browser origins that may call `POST /v1/widget/session`) when its app's origins change. Exact origins only (`https://app.example.com`, no path or wildcard; `http` only for localhost), at most 50; the body takes nothing else. Returns `{ id, allowedOrigins }`. Audited. A connection-signed `PATCH /v1/auth/connections/{id}` with the same body does the same. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id/origins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id",
+                "origins"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Set a connection's allowed origins (signed protocol, PATCH)",
+          "request": {
+            "method": "PATCH",
+            "description": "The same as `PUT /v1/auth/connections/{id}/origins`. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id/origins",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id",
+                "origins"
               ],
               "variable": [
                 {
@@ -12649,6 +13059,50 @@
                   "value": ""
                 }
               ]
+            }
+          }
+        },
+        {
+          "name": "Set an organization's owner (signed protocol)",
+          "request": {
+            "method": "POST",
+            "description": "The `accounts` capability: an organization the app bills under (`accountRef`: its id in billing metadata, e.g. Atlas's `external_id`) is owned by `ownerCustomerRef` (a user the connection reports). Its payments earn for the owner's referral; send it again whenever ownership changes. When the organization's id changes, send the new id as `accountRef` with the old one as `previousAccountRef` (the owner carries over unless `ownerCustomerRef` is sent): the old id then follows the new one. When it is deleted, send `{ accountRef, deleted: true }`: it has no owner from then on, so its payments earn nothing (earned commissions stay; refunds still reverse them). Same as `PUT /v1/billing/accounts/{accountRef}/owner` and `DELETE /v1/billing/accounts/{accountRef}`; returns `{ ok, accountRef, ownerCustomerRef, previousOwnerCustomerRef, renamedFrom, deleted, changed, relinked, reprocessedPayments }`; a repeat answers `changed: false`. Publishes `billing_account.owner_changed`. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/auth/connections/:id/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "connections",
+                ":id",
+                "accounts"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": ""
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           }
         },
@@ -17542,7 +17996,7 @@
           "name": "Mint an executor key under a Cookie Munch partner link",
           "request": {
             "method": "POST",
-            "description": "Called by Cookie Munch, not by you (CMU-X25): mints (or rotates) this org's cm-standard-v2 executor key so Cookie Munch's `referalli` executor preset can connect without a pasted key. The request must be signed by Cookie Munch's partner key exactly like its consent deliveries: `CookieMunch-Partner-Signature: t=<unix seconds>,kid=<key id>,ed25519=<base64url>` over `<t>.<raw body>`, with the key named in `https://api.cookiemunch.net/v1/partner/jwks.json` (300 s window; each signed request and each body `nonce` works once, a replay is 409; `partner` must be `referalli` and `externalId` the org in the path). Referalli then confirms the partner link with Cookie Munch over its own partner token (`GET /v1/partner/links`): it must be `active` or `waiting_on_partner`, name this org as `externalId`, sit on a site this org registered (`PUT /v1/org/consent-partners/cookiemunch`), and match `cbid`/`linkId` when sent; otherwise 403 `no_grant`. 201 `{secret, executorUrl, contract, orgId, linkId, cbid, rotated}`: `secret` is shown once and is the bearer key for `executorUrl` (`https://referalli.com/api`, the cm-standard-v2 baseUrl: calls go to `<executorUrl>/privacy/*`), where it reaches only this org's referred customers and partners. The old key stops working at once. Audited (`privacy.executor_key_minted`).\n\n**Auth:** none.",
+            "description": "Called by Cookie Munch, not by you (CMU-X25): mints (or rotates) this org's cm-standard-v2 executor key, limited to `programIds` when sent so Cookie Munch's `referalli` executor preset can connect without a pasted key. The request must be signed by Cookie Munch's partner key exactly like its consent deliveries: `CookieMunch-Partner-Signature: t=<unix seconds>,kid=<key id>,ed25519=<base64url>` over `<t>.<raw body>`, with the key named in `https://api.cookiemunch.net/v1/partner/jwks.json` (300 s window; each signed request and each body `nonce` works once, a replay is 409; `partner` must be `referalli` and `externalId` the org in the path). Referalli then confirms the partner link with Cookie Munch over its own partner token (`GET /v1/partner/links`): it must be `active` or `waiting_on_partner`, name this org as `externalId`, sit on a site this org registered (`PUT /v1/org/consent-partners/cookiemunch`), and match `cbid`/`linkId` when sent; otherwise 403 `no_grant`. 201 `{secret, executorUrl, contract, orgId, linkId, cbid, rotated}`: `secret` is shown once and is the bearer key for `executorUrl` (`https://referalli.com/api`, the cm-standard-v2 baseUrl: calls go to `<executorUrl>/privacy/*`), where it reaches only this org's referred customers and partners. The old key stops working at once. Audited (`privacy.executor_key_minted`).\n\n**Auth:** none.",
             "header": [
               {
                 "key": "Content-Type",

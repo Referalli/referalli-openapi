@@ -131,6 +131,11 @@ components:
           enum:
             - "payout"
             - "merchant_credit"
+        signupPaymentGraceMinutes:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: "How long before the referral a payment still earns, 0 to 1440. Default 5."
         riskPolicy:
           type: "object"
           properties:
@@ -214,6 +219,7 @@ components:
         - "allowPaidSearch"
         - "challengeLinks"
         - "settlement"
+        - "signupPaymentGraceMinutes"
         - "riskPolicy"
         - "widget"
         - "mobileApp"
@@ -548,6 +554,7 @@ components:
           type: "array"
           items:
             $ref: "#/components/schemas/ReasonNote"
+          description: "The attribution engine's codes behind `notes`, on stored referrals. Not the same list as the signed signups call's `reasoning.codes` (SignupReasonCode)."
       additionalProperties: {}
     Referral:
       type: "object"
@@ -748,6 +755,7 @@ components:
             - type: "null"
           description: "null when no partner matched (not an error)."
         reasoning:
+          description: "Why a partner was skipped or the referral held, in English (no codes here). The matched referral carries its own `reasoning.notes` and `reasoning.noteCodes`."
           type: "object"
           properties:
             notes:
@@ -758,6 +766,21 @@ components:
             - "notes"
       required:
         - "referral"
+    HandoffToken:
+      type: "object"
+      properties:
+        handoffToken:
+          type: "string"
+          description: "Opaque; keep it in your own session and pass it to `POST /v1/referrals/associate`."
+          examples:
+            - "rh_eyJraW5kIjoiaGFuZG9mZiJ9.3q2-7w"
+        expiresAt:
+          type: "string"
+          format: "date-time"
+          pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+      required:
+        - "handoffToken"
+        - "expiresAt"
     CommissionEvent:
       type: "object"
       properties:
@@ -1082,8 +1105,44 @@ components:
               type: "string"
               examples:
                 - "20% of every payment for 12 months"
+            es:
+              type: "string"
+            de:
+              type: "string"
+              examples:
+                - "20 % auf jede Zahlung für 12 Monate"
+            fr:
+              type: "string"
+            pt:
+              type: "string"
+            it:
+              type: "string"
+            nl:
+              type: "string"
+            sv:
+              type: "string"
+            ja:
+              type: "string"
+            zh:
+              type: "string"
           required:
             - "en"
+            - "es"
+            - "de"
+            - "fr"
+            - "pt"
+            - "it"
+            - "nl"
+            - "sv"
+            - "ja"
+            - "zh"
+          description: "The same sentence in each partner-portal locale."
+        locale:
+          description: "With `?locale=` or `Accept-Language`: the locale chosen (`en` when the one asked for is not supported)."
+          type: "string"
+        text:
+          description: "With `?locale=` or `Accept-Language`: the summary in `locale`."
+          type: "string"
       required:
         - "programId"
         - "ruleVersion"
@@ -1562,7 +1621,8 @@ components:
           enum:
             - "processed"
             - "ignored_by_filter"
-          description: "ignored_by_filter: recorded, never processed (product filter or internal customer)."
+            - "parked"
+          description: "ignored_by_filter: recorded, never processed (product filter or internal customer). parked: a refund or dispute waiting up to 7 days for its payment."
         ignoredReason:
           anyOf:
             - type: "string"
@@ -2470,6 +2530,63 @@ components:
         - "limits"
         - "usage"
         - "portalUrl"
+    TrackingTokens:
+      type: "object"
+      properties:
+        mode:
+          type: "string"
+          enum:
+            - "live"
+            - "test"
+          description: "The caller's mode (the key's, or the session's referalli-mode)."
+        live:
+          type: "object"
+          properties:
+            orgId:
+              type: "string"
+            trackingToken:
+              type: "string"
+            scriptUrl:
+              type: "string"
+              description: "The aff.js URL for this mode."
+            linkBaseUrl:
+              type: "string"
+              description: "The org's verified link domain, else Referalli's public origin."
+            linkTemplate:
+              type: "string"
+              description: "A partner link, with `{code}` for the link code."
+          required:
+            - "orgId"
+            - "trackingToken"
+            - "scriptUrl"
+            - "linkBaseUrl"
+            - "linkTemplate"
+        test:
+          type: "object"
+          properties:
+            orgId:
+              type: "string"
+            trackingToken:
+              type: "string"
+            scriptUrl:
+              type: "string"
+              description: "The aff.js URL for this mode."
+            linkBaseUrl:
+              type: "string"
+              description: "The org's verified link domain, else Referalli's public origin."
+            linkTemplate:
+              type: "string"
+              description: "A partner link, with `{code}` for the link code."
+          required:
+            - "orgId"
+            - "trackingToken"
+            - "scriptUrl"
+            - "linkBaseUrl"
+            - "linkTemplate"
+      required:
+        - "mode"
+        - "live"
+        - "test"
     Member:
       type: "object"
       properties:
@@ -2745,6 +2862,31 @@ components:
           type: "string"
           format: "date-time"
           pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        lastSignupAt:
+          description: "When the connection last filed a new sign-up (its signedUpAt); null when never. Webhook connections count only sign-ups that carried referral context; test sign-ups never count."
+          anyOf:
+            - type: "string"
+              format: "date-time"
+              pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            - type: "null"
+        lastError:
+          description: "The last inbound call (sign-up, partner, account…) this connection refused after its signature checked out, such as a body with fields the endpoint does not take. Compare `at` with `lastSignupAt`: a newer error means sign-ups are failing. Null when none."
+          anyOf:
+            - type: "object"
+              properties:
+                at:
+                  type: "string"
+                  format: "date-time"
+                  pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                code:
+                  type: "string"
+                message:
+                  type: "string"
+              required:
+                - "at"
+                - "code"
+                - "message"
+            - type: "null"
         rotation:
           type: "object"
           properties:
@@ -2756,6 +2898,9 @@ components:
               pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
           required:
             - "inProgress"
+        programBound:
+          description: "A program-scoped key made this connection, so its signed calls (erase, export and the rest) reach only its own program."
+          type: "boolean"
         instanceId:
           description: "Signed-protocol connections: the Atlas instance, or a custom label."
           anyOf:
@@ -2825,6 +2970,9 @@ components:
         programId:
           description: "Signed-protocol connections (atlas, custom)."
           type: "string"
+        programBound:
+          description: "Made by a program-scoped key: signed calls reach only this program."
+          type: "boolean"
         instanceId:
           type: "string"
         appId:
@@ -5307,6 +5455,60 @@ components:
         - "createdAt"
         - "data"
       description: "A customer's id changed: the `customer.aliased` delivery body."
+    BillingAccountOwnerChangedEventData:
+      type: "object"
+      properties:
+        accountRef:
+          type: "string"
+        ownerCustomerRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        previousOwnerCustomerRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        previousAccountRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        deleted:
+          type: "boolean"
+      required:
+        - "accountRef"
+        - "ownerCustomerRef"
+        - "previousOwnerCustomerRef"
+        - "previousAccountRef"
+        - "deleted"
+      description: "`data` of a `billing_account.owner_changed` event: An organization the app bills under has a new owner, a new id (`previousAccountRef` is the old one) or was deleted (`deleted`, no owner), set with `PUT /v1/billing/accounts/{accountRef}/owner`, `DELETE /v1/billing/accounts/{accountRef}` or by an auth platform. Its payments earn for `ownerCustomerRef`'s referral."
+    BillingAccountOwnerChangedEvent:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          description: "The event id (`evt_…`); the same event delivered to several endpoints has the same id."
+        topic:
+          type: "string"
+          const: "billing_account.owner_changed"
+        orgId:
+          type: "string"
+        livemode:
+          type: "boolean"
+          description: "false for events from test mode."
+        createdAt:
+          type: "string"
+          format: "date-time"
+          pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        data:
+          $ref: "#/components/schemas/BillingAccountOwnerChangedEventData"
+      required:
+        - "id"
+        - "topic"
+        - "orgId"
+        - "livemode"
+        - "createdAt"
+        - "data"
+      description: "A billing account's owner changed: the `billing_account.owner_changed` delivery body."
     CommissionEarnedEventData:
       type: "object"
       properties:
@@ -6276,6 +6478,74 @@ components:
         - "createdAt"
         - "data"
       description: "A billing event was recorded: the `billing_event.recorded` delivery body."
+    BillingEventExpiredEventData:
+      type: "object"
+      properties:
+        billingEventId:
+          type: "string"
+          description: "The refund or dispute."
+        type:
+          type: "string"
+          enum:
+            - "refund"
+            - "dispute"
+        customerRef:
+          type: "string"
+        invoiceRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        chargeRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        currency:
+          type: "string"
+          description: "Lowercase ISO 4217 code."
+          examples:
+            - "usd"
+        amountMinor:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: "Integer minor units (cents)."
+      required:
+        - "billingEventId"
+        - "type"
+        - "customerRef"
+        - "invoiceRef"
+        - "chargeRef"
+        - "currency"
+        - "amountMinor"
+      description: "`data` of a `billing_event.expired` event: A refund or dispute waited 7 days for a payment that never arrived, and reversed nothing. A payment arriving later earns in full; adjust it by hand if the refund still applies."
+    BillingEventExpiredEvent:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+          description: "The event id (`evt_…`); the same event delivered to several endpoints has the same id."
+        topic:
+          type: "string"
+          const: "billing_event.expired"
+        orgId:
+          type: "string"
+        livemode:
+          type: "boolean"
+          description: "false for events from test mode."
+        createdAt:
+          type: "string"
+          format: "date-time"
+          pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        data:
+          $ref: "#/components/schemas/BillingEventExpiredEventData"
+      required:
+        - "id"
+        - "topic"
+        - "orgId"
+        - "livemode"
+        - "createdAt"
+        - "data"
+      description: "A parked refund or dispute expired: the `billing_event.expired` delivery body."
     RoiPaybackReachedEventData:
       type: "object"
       properties:
@@ -7580,6 +7850,31 @@ components:
         - "createdAt"
         - "data"
       description: "A failing webhook endpoint recovered: the `webhook_endpoint.recovered` delivery body."
+    GetTOrgTokenConfigJsonResponse:
+      type: "object"
+      properties:
+        cookieWindowDays:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+          description: "How long aff.js keeps the context, in days (1 to 400): the default it is served with."
+        cookieName:
+          type: "string"
+          examples:
+            - "referalli_ctx"
+        legacyCookieName:
+          type: "string"
+          description: "The pre-rename cookie name, written alongside until 2027-01-31."
+        storageKeys:
+          type: "array"
+          items:
+            type: "string"
+          description: "localStorage keys aff.js writes (same names and value as the cookies)."
+      required:
+        - "cookieWindowDays"
+        - "cookieName"
+        - "legacyCookieName"
+        - "storageKeys"
     PostTOrgTokenVisitResponse:
       type: "object"
       properties:
@@ -9135,6 +9430,22 @@ components:
       required:
         - "builtIn"
         - "params"
+    GetProgramsHandleAvailabilityResponse:
+      type: "object"
+      properties:
+        handle:
+          type: "string"
+        available:
+          type: "boolean"
+        reason:
+          description: "`invalid`: not 3 to 48 of a-z, 0-9 and `-`; `taken`: another program (in any org) has it."
+          type: "string"
+          enum:
+            - "taken"
+            - "invalid"
+      required:
+        - "handle"
+        - "available"
     GetProgramsResponse:
       type: "object"
       properties:
@@ -10368,6 +10679,117 @@ components:
         - "data"
         - "has_more"
         - "next_cursor"
+    PostBillingConnectionsIdEventsResponse:
+      type: "object"
+      properties:
+        received:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        results:
+          type: "array"
+          items:
+            type: "object"
+            properties:
+              duplicate:
+                type: "boolean"
+              billingEventId:
+                anyOf:
+                  - type: "string"
+                  - type: "null"
+              conversions:
+                type: "integer"
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              linesCreated:
+                type: "integer"
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              reversals:
+                type: "integer"
+                minimum: -9007199254740991
+                maximum: 9007199254740991
+              ignored:
+                description: "Recorded as ignored_by_filter: earned nothing."
+                type: "string"
+                enum:
+                  - "filter"
+                  - "internal_customer"
+            required:
+              - "duplicate"
+              - "billingEventId"
+              - "conversions"
+              - "linesCreated"
+              - "reversals"
+      required:
+        - "received"
+        - "results"
+    PutBillingAccountsAccountRefOwnerResponse:
+      type: "object"
+      properties:
+        accountRef:
+          type: "string"
+        ownerCustomerRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+          description: "Null after a deletion (or a rename of an account with no owner)."
+        previousOwnerCustomerRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        changed:
+          type: "boolean"
+        relinked:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        reprocessedPayments:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        renamedFrom:
+          anyOf:
+            - type: "string"
+            - type: "null"
+          description: "The previous id, on a rename."
+        deleted:
+          type: "boolean"
+      required:
+        - "accountRef"
+        - "ownerCustomerRef"
+        - "previousOwnerCustomerRef"
+        - "changed"
+        - "relinked"
+        - "reprocessedPayments"
+        - "renamedFrom"
+        - "deleted"
+    GetBillingAccountsAccountRefResponse:
+      type: "object"
+      properties:
+        accountRef:
+          type: "string"
+        ownerCustomerRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        since:
+          type: "string"
+          format: "date-time"
+          pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        renamedTo:
+          anyOf:
+            - type: "string"
+            - type: "null"
+          description: "The id the account was renamed to; it follows that account."
+        deleted:
+          type: "boolean"
+      required:
+        - "accountRef"
+        - "ownerCustomerRef"
+        - "since"
+        - "renamedTo"
+        - "deleted"
     PutBillingConnectionsIdValueMappingResponse:
       type: "object"
       properties:
@@ -12719,32 +13141,175 @@ components:
         - "since"
         - "replayed"
     PostSandboxSimulateResponse:
-      type: "object"
-      properties:
-        customerRef:
-          type: "string"
-        events:
-          type: "integer"
-          minimum: -9007199254740991
-          maximum: 9007199254740991
-        conversions:
-          type: "integer"
-          minimum: -9007199254740991
-          maximum: 9007199254740991
-        linesCreated:
-          type: "integer"
-          minimum: -9007199254740991
-          maximum: 9007199254740991
-        reversals:
-          type: "integer"
-          minimum: -9007199254740991
-          maximum: 9007199254740991
-      required:
-        - "customerRef"
-        - "events"
-        - "conversions"
-        - "linesCreated"
-        - "reversals"
+      anyOf:
+        - type: "object"
+          properties:
+            customerRef:
+              type: "string"
+            events:
+              type: "integer"
+              minimum: -9007199254740991
+              maximum: 9007199254740991
+            conversions:
+              type: "integer"
+              minimum: -9007199254740991
+              maximum: 9007199254740991
+            linesCreated:
+              type: "integer"
+              minimum: -9007199254740991
+              maximum: 9007199254740991
+            reversals:
+              type: "integer"
+              minimum: -9007199254740991
+              maximum: 9007199254740991
+          required:
+            - "customerRef"
+            - "events"
+            - "conversions"
+            - "linesCreated"
+            - "reversals"
+        - type: "object"
+          properties:
+            scenario:
+              type: "string"
+              const: "signup_and_pay"
+            ok:
+              type: "boolean"
+              description: "Both steps succeeded: the sign-up was attributed and the payment earned a commission."
+            steps:
+              type: "array"
+              items:
+                anyOf:
+                  - type: "object"
+                    properties:
+                      step:
+                        type: "string"
+                        const: "signup"
+                      ok:
+                        type: "boolean"
+                      via:
+                        type: "string"
+                        enum:
+                          - "auth_connection"
+                          - "associate"
+                      customerRef:
+                        type: "string"
+                      referralId:
+                        anyOf:
+                          - type: "string"
+                          - type: "null"
+                      partnerId:
+                        anyOf:
+                          - type: "string"
+                          - type: "null"
+                      notes:
+                        type: "array"
+                        items:
+                          type: "string"
+                        description: "Why the sign-up was not credited, when it was not."
+                    required:
+                      - "step"
+                      - "ok"
+                      - "via"
+                      - "customerRef"
+                      - "referralId"
+                      - "partnerId"
+                      - "notes"
+                  - type: "object"
+                    properties:
+                      step:
+                        type: "string"
+                        const: "payment"
+                      ok:
+                        type: "boolean"
+                      billingConnectionId:
+                        type: "string"
+                      provider:
+                        type: "string"
+                      eventId:
+                        anyOf:
+                          - type: "string"
+                          - type: "null"
+                        description: "The payment.paid event id; null when the step did not run."
+                      results:
+                        type: "array"
+                        items:
+                          type: "object"
+                          properties:
+                            duplicate:
+                              type: "boolean"
+                            billingEventId:
+                              anyOf:
+                                - type: "string"
+                                - type: "null"
+                            conversions:
+                              type: "integer"
+                              minimum: -9007199254740991
+                              maximum: 9007199254740991
+                            linesCreated:
+                              type: "integer"
+                              minimum: -9007199254740991
+                              maximum: 9007199254740991
+                            reversals:
+                              type: "integer"
+                              minimum: -9007199254740991
+                              maximum: 9007199254740991
+                            ignored:
+                              type: "string"
+                          required:
+                            - "duplicate"
+                            - "billingEventId"
+                            - "conversions"
+                            - "linesCreated"
+                            - "reversals"
+                      notes:
+                        type: "array"
+                        items:
+                          type: "string"
+                        description: "Why the payment earned nothing (awaiting_secret, program mismatch, no rule…)."
+                    required:
+                      - "step"
+                      - "ok"
+                      - "billingConnectionId"
+                      - "provider"
+                      - "eventId"
+                      - "results"
+                      - "notes"
+              description: "The signup step, then the payment step."
+            commissions:
+              type: "array"
+              items:
+                type: "object"
+                properties:
+                  id:
+                    type: "string"
+                  type:
+                    type: "string"
+                  partnerId:
+                    type: "string"
+                  amountMinor:
+                    type: "integer"
+                    minimum: -9007199254740991
+                    maximum: 9007199254740991
+                  currency:
+                    type: "string"
+                  relatedCommissionId:
+                    anyOf:
+                      - type: "string"
+                      - type: "null"
+                required:
+                  - "id"
+                  - "type"
+                  - "partnerId"
+                  - "amountMinor"
+                  - "currency"
+                  - "relatedCommissionId"
+              description: "Commission events the fixture created (earned, reversed…)."
+          required:
+            - "scenario"
+            - "ok"
+            - "steps"
+            - "commissions"
     GetSandboxBillingFixturesResponse:
       type: "object"
       properties:
@@ -16581,9 +17146,15 @@ components:
           properties:
             partners:
               type: "boolean"
+            origins:
+              type: "boolean"
+            accounts:
+              type: "boolean"
           required:
             - "partners"
-          description: "What the connection takes beyond sign-ups: `partners` is user-chosen referral codes through `/partners`."
+            - "origins"
+            - "accounts"
+          description: "What the connection takes beyond sign-ups: `partners` is user-chosen referral codes through `/partners`; `origins` is setting its own `allowedOrigins` through `PUT …/origins`; `accounts` is organization owners through `/accounts`."
       required:
         - "ok"
         - "connectionId"
@@ -16592,6 +17163,30 @@ components:
         - "autoEnrollUsers"
         - "serverTime"
         - "capabilities"
+    PutAuthConnectionsIdOriginsResponse:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        allowedOrigins:
+          type: "array"
+          items:
+            type: "string"
+      required:
+        - "id"
+        - "allowedOrigins"
+    PatchAuthConnectionsIdOriginsResponse:
+      type: "object"
+      properties:
+        id:
+          type: "string"
+        allowedOrigins:
+          type: "array"
+          items:
+            type: "string"
+      required:
+        - "id"
+        - "allowedOrigins"
     PostAuthConnectionsIdAliasesResponse:
       type: "object"
       properties:
@@ -16699,6 +17294,50 @@ components:
         - "code"
         - "linkUrl"
         - "enrolledAt"
+    PostAuthConnectionsIdAccountsResponse:
+      type: "object"
+      properties:
+        ok:
+          type: "boolean"
+          const: true
+        accountRef:
+          type: "string"
+        ownerCustomerRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+          description: "Null after a deletion (or a rename of an account with no owner)."
+        previousOwnerCustomerRef:
+          anyOf:
+            - type: "string"
+            - type: "null"
+        changed:
+          type: "boolean"
+        relinked:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        reprocessedPayments:
+          type: "integer"
+          minimum: -9007199254740991
+          maximum: 9007199254740991
+        renamedFrom:
+          anyOf:
+            - type: "string"
+            - type: "null"
+          description: "The previous id, on a rename."
+        deleted:
+          type: "boolean"
+      required:
+        - "ok"
+        - "accountRef"
+        - "ownerCustomerRef"
+        - "previousOwnerCustomerRef"
+        - "changed"
+        - "relinked"
+        - "reprocessedPayments"
+        - "renamedFrom"
+        - "deleted"
     PostAuthConnectionsIdSignalsResponse:
       type: "object"
       properties:
@@ -17338,6 +17977,11 @@ components:
           anyOf:
             - $ref: "#/components/schemas/GetOpenapiJsonResponse"
             - type: "null"
+        terms:
+          anyOf:
+            - $ref: "#/components/schemas/ProgramTerms"
+            - type: "null"
+          description: "The program's terms (as `GET /v1/programs/{id}/terms`, with `?locale=`/`Accept-Language`); null when it has no rule yet."
         branding:
           type: "object"
           properties:
@@ -17363,6 +18007,7 @@ components:
         - "pitch"
         - "autoApprove"
         - "commission"
+        - "terms"
         - "branding"
     PostPublicProgramsHandleJoinResponse:
       type: "object"
@@ -23369,7 +24014,7 @@ components:
             $ref: "#/components/schemas/GetOpenapiJsonResponse"
   responses:
     BadRequest:
-      description: "The request is invalid. `error.code` is one of:\n\n- `validation_error`: The body or query failed validation, an unknown field was sent, the body is not valid JSON, or a session call has no `x-org-id`. `details` lists the failing fields.\n- `mode_mismatch`: The `Referalli-Mode` header disagrees with the API key's mode.\n- `bad_request`: Rejected by the HTTP layer before the handler."
+      description: "The request is invalid. `error.code` is one of:\n\n- `validation_error`: The body or query failed validation, an unknown field was sent, the body is not valid JSON, or a session call has no `x-org-id`. `details` lists the failing fields.\n- `mode_mismatch`: The `Referalli-Mode` header disagrees with the API key's mode.\n- `bad_request`: Rejected by the HTTP layer before the handler.\n- `invalid_handoff_token`: `handoffToken` on `associate` is malformed, expired (24 hours), signed for another org, or its signature does not verify."
       headers:
         x-request-id:
           $ref: "#/components/headers/RequestId"
@@ -23404,6 +24049,13 @@ components:
                   code: "bad_request"
                   message: "rejected by the http layer before the handler"
                   docs_url: "https://referalli.com/docs/errors-and-limits#bad_request"
+            invalid_handoff_token:
+              summary: "invalid_handoff_token"
+              value:
+                error:
+                  code: "invalid_handoff_token"
+                  message: "`handofftoken` on `associate` is malformed, expired (24 hours), signed for another org, or its signature does not verify"
+                  docs_url: "https://referalli.com/docs/errors-and-limits#invalid_handoff_token"
     Unauthorized:
       description: "Missing or invalid credentials. `error.code` is one of:\n\n- `unauthorized`: No credentials, an unknown, revoked or expired API key or session, or a signature that did not verify.\n- `step_up_required`: A partner with two-factor on must send `x-totp-code`.\n- `reauth_required`: A session that signed in too long ago changed payout details; `details` is `{ \"reauthUrl\", \"maxAgeMinutes\" }`."
       headers:
@@ -23453,7 +24105,7 @@ components:
                   message: "a plan limit or feature"
                   docs_url: "https://referalli.com/docs/errors-and-limits#payment_required"
     Forbidden:
-      description: "Authenticated, but not allowed. `error.code` is one of:\n\n- `forbidden`: The wrong role, a key without the needed scope (the message names it; `details.requiredScopes` lists every scope that would do), not a member, a suspended org, or a publishable key from an origin it does not allow.\n- `sso_required`: This organization requires single sign-on; `details.signInUrl` starts it.\n- `access_suspended`: Your identity provider suspended your access and you are the last owner.\n- `program_scoped_key`: A key limited to some programs (`programIds`) called an org-wide endpoint; use a key for the whole org.\n- `restricted_session`: A partner session opened from a merchant portal link is read-only for one program; sign in normally to make changes."
+      description: "Authenticated, but not allowed. `error.code` is one of:\n\n- `forbidden`: The wrong role, a key without the needed scope (the message names it; `details.requiredScopes` lists every scope that would do), not a member, a suspended org, or a publishable key from an origin it does not allow.\n- `sso_required`: This organization requires single sign-on; `details.signInUrl` starts it.\n- `access_suspended`: Your identity provider suspended your access and you are the last owner.\n- `program_scoped_key`: A key limited to some programs (`programIds`) called an org-wide endpoint; `details.alternative` names the key that can. A connection create for a program outside the key also answers this, with `details.programId`.\n- `restricted_session`: A partner session opened from a merchant portal link is read-only for one program; sign in normally to make changes."
       headers:
         x-request-id:
           $ref: "#/components/headers/RequestId"
@@ -23986,6 +24638,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
       security: []
+  "/t/{orgToken}/config.json":
+    get:
+      operationId: "getTOrgTokenConfigJson"
+      summary: "Get the tracking script config"
+      description: "What `aff.js` stores on the merchant's site, for consent tools that declare its cookie: `cookieWindowDays` (the default the same token's `aff.js` is served with, the longest cookie window of the org's active programs, 60 with none, 1 to 400), the cookie names and the localStorage keys. Answers whether or not any program has a public page, and holds nothing the script doesn't already reveal. No authentication, any origin, cached for 5 minutes. A tag's own `data-cookie-days` overrides the window on that page. Unknown tokens return 404.\n\n**Auth:** none."
+      tags:
+        - "Tracking"
+      parameters:
+        - name: "orgToken"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/GetTOrgTokenConfigJsonResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
   "/go/{orgToken}/{code}":
     get:
       operationId: "getGoOrgTokenCode"
@@ -24163,6 +24850,68 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/GetTOrgTokenCodesCodeResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
+  "/t/{orgToken}/handoff":
+    post:
+      operationId: "postTOrgTokenHandoff"
+      summary: "Mint a hand-off token"
+      description: "Cookie-free hand-off: turns the visit's referral context (`anonId`, `clickId`, `code`, at least one) into a signed token your product keeps in its own session (a server session, a sign-up form field, a redirect across domains) and passes to `POST /v1/referrals/associate` as `handoffToken`. Valid for 24 hours and only for this org; it holds the same ids aff.js stores in its cookie, nothing personal. `aff.getHandoffToken()` calls it. CORS open to any origin. Unknown tokens return 404.\n\n**Auth:** none."
+      tags:
+        - "Tracking"
+      parameters:
+        - name: "orgToken"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                anonId:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 80
+                clickId:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 80
+                code:
+                  description: "The referral (link or coupon) code from the landing URL."
+                  type: "string"
+                  minLength: 1
+                  maxLength: 120
+            example:
+              anonId: "a_8f2c1d0e9b7a6c5d4e3f"
+              clickId: "clk_01JB2X9Q4M7T0E1R2S3V4W5Y6Z"
+              code: "dana"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/HandoffToken"
+              example:
+                handoffToken: "rh_eyJraW5kIjoiaGFuZG9mZiJ9.3q2-7w"
+                expiresAt: "2026-11-04T10:00:00.000Z"
         "400":
           $ref: "#/components/responses/BadRequest"
         "404":
@@ -25336,7 +26085,7 @@ paths:
     get:
       operationId: "getV1Me"
       summary: "Get the current caller"
-      description: "Who is calling. With a user session: the user and their org memberships (no `x-org-id` needed). With an API key: `{ user: null, memberships: [], apiKey, org: { id, name } }`, where `apiKey` holds the key (name, prefix, scopes, pinned `apiVersion`, `livemode`, owner, expiry, `programIds`). The mode is `apiKey.livemode`; there is no top-level `livemode`.\n\n**Auth:** an API key with `team:read`, or a session of any role.\n\n**Scopes:** `team:read`, `team:write`, `read`, `full`, `admin`."
+      description: "Who is calling. With a user session: the user and their org memberships (no `x-org-id` needed). With an API key: `{ user: null, memberships: [], apiKey, org: { id, name } }`, where `apiKey` holds the key (name, prefix, scopes, pinned `apiVersion`, `livemode`, owner, expiry, `programIds`). The mode is `apiKey.livemode`; there is no top-level `livemode`. Any key may call it, whatever its scopes.\n\n**Auth:** an API key with `null`, or a session of any role.\n\n**Scopes:** ."
       tags:
         - "Authentication"
       parameters:
@@ -25370,13 +26119,6 @@ paths:
       security:
         - apiKey: []
         - session: []
-      x-required-scope: "team:read"
-      x-scopes:
-        - "team:read"
-        - "team:write"
-        - "read"
-        - "full"
-        - "admin"
   "/v1/auth/sso/start":
     get:
       operationId: "getV1AuthSsoStart"
@@ -26425,6 +27167,51 @@ paths:
         - "admin"
       x-roles:
         - "owner"
+        - "admin"
+  "/v1/org/tracking-tokens":
+    get:
+      operationId: "getV1OrgTrackingTokens"
+      summary: "Both modes' tracking tokens"
+      description: "The org's public tracking values for live and test mode, labelled: `{ mode, live, test }`, each with `orgId`, `trackingToken`, `scriptUrl` (aff.js), `linkBaseUrl` (the verified link domain, else Referalli's origin) and `linkTemplate` (`…/go/{token}/{code}`). `mode` is the caller's. Any key reads both, live or test; nothing else crosses modes. The test org is created on first use.\n\n**Auth:** an API key with `org:read`, or a session of any role.\n\n**Scopes:** `org:read`, `org:write`, `read`, `full`, `admin`."
+      tags:
+        - "Organization"
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/TrackingTokens"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "org:read"
+      x-scopes:
+        - "org:read"
+        - "org:write"
+        - "read"
+        - "full"
         - "admin"
   "/v1/org/members":
     get:
@@ -28655,7 +29442,7 @@ paths:
     post:
       operationId: "postV1Programs"
       summary: "Create a program"
-      description: "Creates an affiliate program: its attribution model, cookie window, how long after sign-up a conversion still counts (`signupToConversionDays`, 1 to 1095, default 365; `cookieWindowDays` is 1 to 400, default 60), terms, public page and settings. `slug` is unique per org. Terms are versioned so partners can be asked to accept new ones. Over the plan's program limit this is `402 payment_required`.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`."
+      description: "Creates an affiliate program: its attribution model, cookie window, how long after sign-up a conversion still counts (`signupToConversionDays`, 1 to 1095, default 365; `cookieWindowDays` is 1 to 400, default 60), terms, public page and settings (`signupPaymentGraceMinutes`, 0 to 1440, default 5: how long before the referral's sign-up time a payment still earns). `slug` is unique per org. Terms are versioned so partners can be asked to accept new ones. `publicHandle` is unique across every org (check it first with `GET /v1/programs/handle-availability`). A taken `slug` or `publicHandle` is `409 conflict` with `details.field` naming it (`slug` or `publicHandle`). Over the plan's program limit this is `402 payment_required`.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`."
       tags:
         - "Programs"
       parameters:
@@ -28749,6 +29536,10 @@ paths:
                   enum:
                     - "payout"
                     - "merchant_credit"
+                signupPaymentGraceMinutes:
+                  type: "integer"
+                  minimum: 0
+                  maximum: 1440
                 riskPolicy:
                   type: "object"
                   properties:
@@ -28860,6 +29651,7 @@ paths:
                   allowPaidSearch: true
                   challengeLinks: false
                   settlement: "payout"
+                  signupPaymentGraceMinutes: 5
                   riskPolicy:
                     holdBotScore: 0.8
                     holdDisposableEmail: true
@@ -28993,6 +29785,7 @@ paths:
                       allowPaidSearch: true
                       challengeLinks: false
                       settlement: "payout"
+                      signupPaymentGraceMinutes: 5
                       riskPolicy:
                         holdBotScore: 0.8
                         holdDisposableEmail: true
@@ -29012,6 +29805,61 @@ paths:
                     createdAt: "2026-10-21T12:00:00.000Z"
                 has_more: false
                 next_cursor: null
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "programs:read"
+      x-scopes:
+        - "programs:read"
+        - "programs:write"
+        - "read"
+        - "full"
+        - "admin"
+  "/v1/programs/handle-availability":
+    get:
+      operationId: "getV1ProgramsHandleAvailability"
+      summary: "Check a public handle"
+      description: "Whether `handle` can be set as a program's `publicHandle`, using the same rules as `POST`/`PATCH /v1/programs`: `available: false` with `reason: \"invalid\"` when it is not 3 to 48 characters of `a-z`, `0-9` and `-`, or `reason: \"taken\"` when any program (in any org, including your own) already has it. Handles are claimed only by setting them, so a free handle can still be taken before you do; the setter's `409` names `details.field: \"publicHandle\"`.\n\n**Auth:** an API key with `programs:read`, or a session of any role.\n\n**Scopes:** `programs:read`, `programs:write`, `read`, `full`, `admin`."
+      tags:
+        - "Programs"
+      parameters:
+        - name: "handle"
+          in: "query"
+          required: true
+          schema:
+            type: "string"
+            maxLength: 200
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/GetProgramsHandleAvailabilityResponse"
+              example:
+                handle: "acme"
+                available: false
+                reason: "taken"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -29082,6 +29930,7 @@ paths:
                   allowPaidSearch: true
                   challengeLinks: false
                   settlement: "payout"
+                  signupPaymentGraceMinutes: 5
                   riskPolicy:
                     holdBotScore: 0.8
                     holdDisposableEmail: true
@@ -29130,7 +29979,7 @@ paths:
     patch:
       operationId: "patchV1ProgramsId"
       summary: "Update a program"
-      description: "Changes any program field or setting; omitted fields keep their value, and `publicPage` is merged. Changing `termsMd` records a new terms version. Setting `status` to `paused` or `archived` stops new attribution. `mobileApp` (iOS Team ID and bundle id, Android package and signing-certificate fingerprints) publishes the program's apps in the universal-links and App Links files on the org's link hosts. `destinationUrl` moves the program's default link destination: every link still on the old default (the widget's or a sign-in connection's) is repointed in the same call, custom destinations stay, and links already shared follow at click time; `{code}` in it becomes the link's code. Audited.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`."
+      description: "Changes any program field or setting; omitted fields keep their value, and `publicPage` is merged. Changing `termsMd` records a new terms version. Setting `status` to `paused` or `archived` stops new attribution. `signupPaymentGraceMinutes` (0 to 1440, default 5) is how long before the referral's sign-up time a payment still earns. `mobileApp` (iOS Team ID and bundle id, Android package and signing-certificate fingerprints) publishes the program's apps in the universal-links and App Links files on the org's link hosts. `destinationUrl` moves the program's default link destination: every link still on the old default (the widget's or a sign-in connection's) is repointed in the same call, custom destinations stay, and links already shared follow at click time; `{code}` in it becomes the link's code. A `publicHandle` another program has is `409 conflict` with `details: { field: 'publicHandle' }`. Audited.\n\n**Auth:** an API key with `programs:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `programs:write`, `full`, `admin`."
       tags:
         - "Programs"
       parameters:
@@ -29225,6 +30074,10 @@ paths:
                   enum:
                     - "payout"
                     - "merchant_credit"
+                signupPaymentGraceMinutes:
+                  type: "integer"
+                  minimum: 0
+                  maximum: 1440
                 riskPolicy:
                   type: "object"
                   properties:
@@ -29343,6 +30196,10 @@ paths:
                       enum:
                         - "payout"
                         - "merchant_credit"
+                    signupPaymentGraceMinutes:
+                      type: "integer"
+                      minimum: 0
+                      maximum: 1440
                     riskPolicy:
                       type: "object"
                       properties:
@@ -29448,6 +30305,7 @@ paths:
                   allowPaidSearch: true
                   challengeLinks: false
                   settlement: "payout"
+                  signupPaymentGraceMinutes: 5
                   riskPolicy:
                     holdBotScore: 0.8
                     holdDisposableEmail: true
@@ -30507,7 +31365,7 @@ paths:
     post:
       operationId: "postV1ApiKeys"
       summary: "Create an API key"
-      description: "Mints a secret key (`rk_live_…` / `rk_test_…`), shown only in this response (and in its `Idempotency-Key` replay: a retry with the same key and body within 24 hours returns this response again, secret included, without minting another). `scopes` defaults to `full`; a key can't grant scopes it doesn't hold. `mode` picks live, test or a matching pair of both (`both` returns `{ pairId, live, test }`); a test-mode caller can mint test keys only. `publishable: true` mints a browser-safe `rk_pub_` key limited to `programs:read` and `events:write` from `allowedOrigins`. `apiVersion` pins the key to a version, or `latest` (the default) to the newest version at the time of the call; the pin never moves on its own (a key keeps answering in that version after newer ones ship) until you `PATCH` it or send a `referalli-version` header. A key pinned to `2026-10-21` gets every list as a capped plain array instead of the paginated envelope. `programIds` limits the key to those programs (their partners, links, referrals, commissions, enrollments, webhook endpoints whose `programIds` are all within the key's, with their deliveries, and billing connections likewise); a program-scoped key gets 403 `program_scoped_key` on org-wide endpoints (keys, team, org settings, the rest of billing, payouts, the event feed, analytics, creating programs). An `api_keys:mint` key may also call this (and no other key endpoint): it can't mint `admin` or `api_keys:mint` keys or scopes it doesn't hold, and a program-scoped one must send `programIds` within its own (`403` otherwise). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `api_keys:mint`, `full`, `admin`."
+      description: "Expiry is `expiresInDays` or `expiresAt` (ISO 8601, at most 3650 days out), not both. Mints a secret key (`rk_live_…` / `rk_test_…`), shown only in this response (and in its `Idempotency-Key` replay: a retry with the same key and body within 24 hours returns this response again, secret included, without minting another). `scopes` defaults to `full`; a key can't grant scopes it doesn't hold. `mode` picks live, test or a matching pair of both (`both` returns `{ pairId, live, test }`); a test-mode caller can mint test keys only. `publishable: true` mints a browser-safe `rk_pub_` key limited to `programs:read` and `events:write` from `allowedOrigins`. `apiVersion` pins the key to a version, or `latest` (the default) to the newest version at the time of the call; the pin never moves on its own (a key keeps answering in that version after newer ones ship) until you `PATCH` it or send a `referalli-version` header. A key pinned to `2026-10-21` gets every list as a capped plain array instead of the paginated envelope. `programIds` limits the key to those programs (their partners, links, referrals, commissions, enrollments, webhook endpoints whose `programIds` are all within the key's, with their deliveries, billing connections likewise, auth connections of those programs, and privacy lookup, export, forget and requests for people in those programs); a program-scoped key gets 403 `program_scoped_key` on org-wide endpoints (keys, team, org settings, the rest of billing, payouts, the event feed, analytics, creating programs). An `api_keys:mint` key may also call this (and no other key endpoint): it can't mint `admin` or `api_keys:mint` keys or scopes it doesn't hold, and a program-scoped one must send `programIds` within its own (`403` otherwise). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`."
       tags:
         - "Developers"
       parameters:
@@ -30534,6 +31392,8 @@ paths:
                       - "api_keys:mint"
                       - "full"
                       - "read"
+                      - "connections:read"
+                      - "connections:write"
                       - "programs:read"
                       - "programs:write"
                       - "partners:read"
@@ -30593,6 +31453,10 @@ paths:
                   type: "integer"
                   minimum: 1
                   maximum: 3650
+                expiresAt:
+                  type: "string"
+                  format: "date-time"
+                  pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                 programIds:
                   minItems: 1
                   maxItems: 100
@@ -30642,11 +31506,9 @@ paths:
       security:
         - apiKey: []
         - session: []
-      x-required-scope: "team:write"
+      x-required-scope: "api_keys:mint"
       x-scopes:
-        - "team:write"
         - "api_keys:mint"
-        - "full"
         - "admin"
     get:
       operationId: "getV1ApiKeys"
@@ -30797,7 +31659,7 @@ paths:
     patch:
       operationId: "patchV1ApiKeysId"
       summary: "Update an API key"
-      description: "Changes a key's pinned `apiVersion`, `owner`, expiry (`expiresInDays` from now; `null` removes it) or `programIds` (`null` makes it org-wide); `apiVersion: \"latest\"` pins it to today's newest version. A new expiry re-arms the `api_key.expiring` notices. Revoked keys are 404. Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `full`, `admin`."
+      description: "Renames a key or changes its pinned `apiVersion`, `owner`, expiry (`expiresInDays` from now, or `expiresAt`, an ISO 8601 time at most 3650 days out, not both; `null` removes it) or `programIds` (`null` makes it org-wide); `apiVersion: \"latest\"` pins it to today's newest version. A new expiry re-arms the `api_key.expiring` notices. `name` renames it; `scopes` replaces its scopes. Revoked keys are 404. Needs an owner or admin session, or an API key with the `admin` scope. A key holding `api_keys:mint` may also do this for keys it minted itself (403 for any other), but only to narrow `scopes` and `programIds`, never widen them or make the key org-wide. Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`."
       tags:
         - "Developers"
       parameters:
@@ -30816,6 +31678,56 @@ paths:
             schema:
               type: "object"
               properties:
+                name:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 200
+                scopes:
+                  minItems: 1
+                  type: "array"
+                  items:
+                    type: "string"
+                    enum:
+                      - "admin"
+                      - "api_keys:mint"
+                      - "full"
+                      - "read"
+                      - "connections:read"
+                      - "connections:write"
+                      - "programs:read"
+                      - "programs:write"
+                      - "partners:read"
+                      - "partners:write"
+                      - "links:read"
+                      - "links:write"
+                      - "events:read"
+                      - "events:write"
+                      - "referrals:read"
+                      - "referrals:write"
+                      - "commissions:read"
+                      - "commissions:write"
+                      - "payouts:read"
+                      - "payouts:write"
+                      - "billing:read"
+                      - "billing:write"
+                      - "webhooks:read"
+                      - "webhooks:write"
+                      - "analytics:read"
+                      - "analytics:write"
+                      - "fraud:read"
+                      - "fraud:write"
+                      - "privacy:read"
+                      - "privacy:write"
+                      - "team:read"
+                      - "team:write"
+                      - "org:read"
+                      - "org:write"
+                      - "integrations:read"
+                      - "integrations:write"
+                      - "growth:read"
+                      - "growth:write"
+                      - "audit:read"
+                      - "audit:write"
                 apiVersion:
                   type: "string"
                 owner:
@@ -30829,6 +31741,12 @@ paths:
                     - type: "integer"
                       minimum: 1
                       maximum: 3650
+                    - type: "null"
+                expiresAt:
+                  anyOf:
+                    - type: "string"
+                      format: "date-time"
+                      pattern: "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                     - type: "null"
                 programIds:
                   anyOf:
@@ -30871,15 +31789,14 @@ paths:
       security:
         - apiKey: []
         - session: []
-      x-required-scope: "team:write"
+      x-required-scope: "api_keys:mint"
       x-scopes:
-        - "team:write"
-        - "full"
+        - "api_keys:mint"
         - "admin"
     delete:
       operationId: "deleteV1ApiKeysId"
       summary: "Revoke an API key"
-      description: "Revokes a key at once. `cascade=true` also revokes every key it minted (and theirs); `pair=true` also revokes its live/test twin. Returns the revoked ids. Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `full`, `admin`."
+      description: "Revokes a key at once. `cascade=true` also revokes every key it minted (and theirs); `pair=true` also revokes its live/test twin. Returns the revoked ids. Needs an owner or admin session, or an API key with the `admin` scope. A key holding `api_keys:mint` may also do this for keys it minted itself (403 for any other). Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`."
       tags:
         - "Developers"
       parameters:
@@ -30941,16 +31858,15 @@ paths:
       security:
         - apiKey: []
         - session: []
-      x-required-scope: "team:write"
+      x-required-scope: "api_keys:mint"
       x-scopes:
-        - "team:write"
-        - "full"
+        - "api_keys:mint"
         - "admin"
   "/v1/api-keys/{id}/rotate":
     post:
       operationId: "postV1ApiKeysIdRotate"
       summary: "Rotate an API key"
-      description: "Mints a replacement key with the same name, scopes, origins, version pin, owner, programs and lifetime (an expiring key's new expiry is the same length from now), returned once with `rotatedFrom: { id, expiresAt }`. The old key keeps working for `graceHours` (default 24, at most 168, 0 = stop now), then expires; it gets no `api_key.expiring` notice. An expired or revoked key can't be rotated (409 `api_key_expired` / 404). Needs an owner or admin session, or an API key with the `admin` scope. Audited.\n\n**Auth:** an API key with `team:write`, or a session of any role.\n\n**Scopes:** `team:write`, `full`, `admin`."
+      description: "Mints a replacement key with the same name, scopes, origins, version pin, owner, programs and lifetime (an expiring key's new expiry is the same length from now), returned once with `rotatedFrom: { id, expiresAt }`. The old key keeps working for `graceHours` (default 24, at most 168, 0 = stop now), then expires; it gets no `api_key.expiring` notice. An expired or revoked key can't be rotated (409 `api_key_expired` / 404). Needs an owner or admin session, or an API key with the `admin` scope. A key holding `api_keys:mint` may also do this for keys it minted itself (403 for any other). Audited.\n\n**Auth:** an API key with `api_keys:mint`, or a session of any role.\n\n**Scopes:** `api_keys:mint`, `admin`."
       tags:
         - "Developers"
       parameters:
@@ -31007,10 +31923,9 @@ paths:
       security:
         - apiKey: []
         - session: []
-      x-required-scope: "team:write"
+      x-required-scope: "api_keys:mint"
       x-scopes:
-        - "team:write"
-        - "full"
+        - "api_keys:mint"
         - "admin"
   "/v1/audit-logs":
     get:
@@ -32496,7 +33411,7 @@ paths:
     post:
       operationId: "postV1ReferralsAssociate"
       summary: "Attribute a new customer"
-      description: "The key server-side call: tell Referalli a customer signed up, with whatever you know about where they came from (`referralToken`/`ref_click_id`, `anonId`, `couponCode`, `emailHash`, IP and user agent). The attribution engine picks the partner under the program's model and windows. `referral` is `null` when no partner matched (not an error); `reasoning.notes` says why. Repeating `idempotencyKey` returns the existing referral. `occurredAt` records a late call at the real sign-up time (up to 5 minutes of clock skew is tolerated) and backfills payments since. `emailDomain` lets burner-email sign-ups be held for review. Publishes `referral.created` (or `referral.held`).\n\n**Auth:** an API key with `referrals:write`, or a session of any role.\n\n**Scopes:** `referrals:write`, `full`, `admin`."
+      description: "The key server-side call: tell Referalli a customer signed up, with whatever you know about where they came from (`referralToken`/`ref_click_id`, `anonId`, `couponCode`, `emailHash`, IP and user agent). The attribution engine picks the partner under the program's model and windows. `referral` is `null` when no partner matched (not an error); `reasoning.notes` says why. Repeating `idempotencyKey` returns the existing referral. `occurredAt` records a late call at the real sign-up time (up to 5 minutes of clock skew is tolerated) and backfills payments since. `emailDomain` lets burner-email sign-ups be held for review. `handoffToken` (from `POST /t/{orgToken}/handoff` or `POST /v1/referrals/handoff-tokens`) fills `anonId`, `referralToken` and `couponCode` where they are not sent; a malformed, expired or other org's token is `400 invalid_handoff_token`. Publishes `referral.created` (or `referral.held`).\n\n**Auth:** an API key with `referrals:write`, or a session of any role.\n\n**Scopes:** `referrals:write`, `full`, `admin`."
       tags:
         - "Referrals"
       parameters:
@@ -32522,6 +33437,9 @@ paths:
                   type: "string"
                 couponCode:
                   type: "string"
+                handoffToken:
+                  type: "string"
+                  maxLength: 2048
                 emailHash:
                   type: "string"
                 ip:
@@ -32617,6 +33535,79 @@ paths:
                     notes: []
                     noteCodes: []
                   orgId: "org_01JB2X9P0A1B2C3D4E5F6G7H8J"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "referrals:write"
+      x-scopes:
+        - "referrals:write"
+        - "full"
+        - "admin"
+  "/v1/referrals/handoff-tokens":
+    post:
+      operationId: "postV1ReferralsHandoffTokens"
+      summary: "Mint a hand-off token"
+      description: "The server-side twin of `POST /t/{orgToken}/handoff`: signs `anonId`, `clickId` and/or `code` (at least one) into a token valid for 24 hours, for this org only, to pass later to `POST /v1/referrals/associate` as `handoffToken`. Use it when the server that saw the landing (`?ref_click_id=`) is not the one that files the sign-up.\n\n**Auth:** an API key with `referrals:write`, or a session of any role.\n\n**Scopes:** `referrals:write`, `full`, `admin`."
+      tags:
+        - "Referrals"
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                anonId:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 80
+                clickId:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 80
+                code:
+                  description: "The referral (link or coupon) code from the landing URL."
+                  type: "string"
+                  minLength: 1
+                  maxLength: 120
+            example:
+              clickId: "clk_01JB2X9Q4M7T0E1R2S3V4W5Y6Z"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/HandoffToken"
+              example:
+                handoffToken: "rh_eyJraW5kIjoiaGFuZG9mZiJ9.3q2-7w"
+                expiresAt: "2026-11-04T10:00:00.000Z"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -33820,7 +34811,7 @@ paths:
     get:
       operationId: "getV1ProgramsIdTerms"
       summary: "Get a program's terms"
-      description: "The program's commission terms for product copy, from its latest commission rule version (`ruleVersion`): the `base` (`percentBps`, or `amountMinor` and `currency`), how long it recurs, the hold, and `summary.en`, an English sentence built deterministically from the rule, such as \"20% of every payment for 12 months\" or \"$50.00 for the first payment only\". Bounties are added (\", plus $5.00 per signup\"); rule conditions add \"(conditions apply)\"; overrides, tiers or new-vs-expansion rates set `ratesVary` and add \"(rates vary)\" rather than quote one rate. Partner-group rates and promotions are not included. Publishing a new rule version changes the terms on the next read. `404` when the program has no rule yet. Program-scoped keys read their own programs.\n\n**Auth:** an API key with `programs:read`, or a session of any role.\n\n**Scopes:** `programs:read`, `programs:write`, `read`, `full`, `admin`."
+      description: "The program's commission terms for product copy, from its latest commission rule version (`ruleVersion`): the `base` (`percentBps`, or `amountMinor` and `currency`), how long it recurs, the hold, and `summary`, the same sentence in each partner-portal locale (`en`, `es`, `de`, `fr`, `pt`, `it`, `nl`, `sv`, `ja`, `zh`), built deterministically from the rule, such as \"20% of every payment for 12 months\" or \"$50.00 for the first payment only\". Bounties are added (\", plus $5.00 per signup\"); rule conditions add \"(conditions apply)\"; overrides, tiers or new-vs-expansion rates set `ratesVary` and add \"(rates vary)\" rather than quote one rate. With `?locale=de` or an `Accept-Language` header the response also names the chosen `locale` and its sentence as `text` (an unsupported language gets `en`). Bounty event names are kept as written. Partner-group rates and promotions are not included. Publishing a new rule version changes the terms on the next read. `404` when the program has no rule yet. Program-scoped keys read their own programs.\n\n**Auth:** an API key with `programs:read`, or a session of any role.\n\n**Scopes:** `programs:read`, `programs:write`, `read`, `full`, `admin`."
       tags:
         - "Commissions"
       parameters:
@@ -33829,6 +34820,12 @@ paths:
           required: true
           schema:
             type: "string"
+        - name: "locale"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            maxLength: 35
         - $ref: "#/components/parameters/OrgId"
         - $ref: "#/components/parameters/Mode"
       responses:
@@ -33851,6 +34848,15 @@ paths:
                 ratesVary: false
                 summary:
                   en: "20% of every payment for 12 months"
+                  es: "20 % de cada pago durante 12 meses"
+                  de: "20 % auf jede Zahlung für 12 Monate"
+                  fr: "20 % de chaque paiement pendant 12 mois"
+                  pt: "20% de cada pagamento durante 12 meses"
+                  it: "20% su ogni pagamento per 12 mesi"
+                  nl: "20% over elke betaling gedurende 12 maanden"
+                  sv: "20 % på varje betalning i 12 månader"
+                  ja: "12か月間、毎回の支払いの20%"
+                  zh: "12个月内每笔付款的20%"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -34302,6 +35308,15 @@ paths:
                   ratesVary: false
                   summary:
                     en: "20% of every payment for 12 months"
+                    es: "20 % de cada pago durante 12 meses"
+                    de: "20 % auf jede Zahlung für 12 Monate"
+                    fr: "20 % de chaque paiement pendant 12 mois"
+                    pt: "20% de cada pagamento durante 12 meses"
+                    it: "20% su ogni pagamento per 12 mesi"
+                    nl: "20% over elke betaling gedurende 12 maanden"
+                    sv: "20 % på varje betalning i 12 månader"
+                    ja: "12か月間、毎回の支払いの20%"
+                    zh: "12个月内每笔付款的20%"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -35203,6 +36218,275 @@ paths:
       x-roles:
         - "owner"
         - "admin"
+  "/v1/billing/connections/{id}/events":
+    post:
+      operationId: "postV1BillingConnectionsIdEvents"
+      summary: "Send events to a generic connection"
+      description: "The generic connection's webhook body (`{ \"events\": [...] }`, up to 500) sent with an API key instead of the connection's HMAC signature, so your server needs no second secret. Runs the same processing as `POST /webhooks/billing/{id}`: paid invoices become conversions and commissions, refunds and disputes reverse them, and each event is idempotent by `providerEventId` (a resend answers `duplicate: true`), whichever of the two routes sent it first. Needs `billing:write`; a program-scoped key reaches only connections limited to its own programs. `404` for an unknown, deleted or paused connection; `409 conflict` for a connection that isn't `generic` (those take their provider's webhooks).\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`."
+      tags:
+        - "Billing connections"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                events:
+                  minItems: 1
+                  maxItems: 500
+                  type: "array"
+                  items:
+                    type: "object"
+                    propertyNames:
+                      type: "string"
+                    additionalProperties: {}
+              required:
+                - "events"
+            example:
+              events:
+                - providerEventId: "pay_8812"
+                  type: "invoice_paid"
+                  customerRef: "user_42"
+                  invoiceRef: "inv_8812"
+                  amountGross: 4900
+                  currency: "usd"
+                  occurredAt: "2026-11-03T12:00:00Z"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PostBillingConnectionsIdEventsResponse"
+              example:
+                received: 1
+                results:
+                  - duplicate: false
+                    billingEventId: "bev_01JC0Z7Q4K"
+                    conversions: 1
+                    linesCreated: 1
+                    reversals: 0
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "billing:write"
+      x-scopes:
+        - "billing:write"
+        - "full"
+        - "admin"
+      x-roles:
+        - "owner"
+        - "admin"
+  "/v1/billing/accounts/{accountRef}/owner":
+    put:
+      operationId: "putV1BillingAccountsAccountRefOwner"
+      summary: "Set a billing account's owner"
+      description: "For products that bill an organization (a team, a workspace) rather than a person. `accountRef` is the id your billing events carry for the organization (the `customerRef` of a generic event, or the metadata value a connection's `customerRefMetadataKey` reads, e.g. `organization_id`); `ownerCustomerRef` is the user whose referral its payments earn for. From then on the account's payments earn for the owner's referral (unless a referral is filed under the account itself). The first owner set replays the account's earlier payments for that owner's referral. Changing the owner re-points the account's provider customers, so later payments earn for the new owner's referral; payments made before the change stay with the previous owner's referral. When the organization's id changed, call it under the new id with `previousAccountRef` (the old one) instead of, or as well as, `ownerCustomerRef`: the old id then follows the new one (payments still arriving under it earn for the new id's owner), and the owner carries over unless named. Returns `{ accountRef, ownerCustomerRef, previousOwnerCustomerRef, renamedFrom, deleted, changed, relinked, reprocessedPayments }`; the same call again answers `changed: false`. Publishes `billing_account.owner_changed`. Auth platforms with the `accounts` capability (Atlas) send this for you through `POST /v1/auth/connections/{id}/accounts`. Needs `billing:write`. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`."
+      tags:
+        - "Billing connections"
+      parameters:
+        - name: "accountRef"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                ownerCustomerRef:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 256
+                previousAccountRef:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 256
+            example:
+              ownerCustomerRef: "user_42"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PutBillingAccountsAccountRefOwnerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "billing:write"
+      x-scopes:
+        - "billing:write"
+        - "full"
+        - "admin"
+      x-roles:
+        - "owner"
+        - "admin"
+  "/v1/billing/accounts/{accountRef}":
+    delete:
+      operationId: "deleteV1BillingAccountsAccountRef"
+      summary: "Delete a billing account"
+      description: "The organization was deleted: it has no owner from now on, and its provider customers stop resolving to the old owner, so later payments under it earn nothing. Commissions already earned stay, and refunds still reverse them. Setting an owner again restores it for later payments (payments made while it was deleted are not replayed). Returns the same shape as `PUT …/owner` with `deleted: true` and `ownerCustomerRef: null`; deleting an account with nothing recorded (or already deleted) answers `changed: false`. Publishes `billing_account.owner_changed`. Needs `billing:write`. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`."
+      tags:
+        - "Billing connections"
+      parameters:
+        - name: "accountRef"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PutBillingAccountsAccountRefOwnerResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "billing:write"
+      x-scopes:
+        - "billing:write"
+        - "full"
+        - "admin"
+      x-roles:
+        - "owner"
+        - "admin"
+    get:
+      operationId: "getV1BillingAccountsAccountRef"
+      summary: "Get a billing account's owner"
+      description: "What is recorded for a billing account: `{ accountRef, ownerCustomerRef, since, renamedTo, deleted }`. A renamed id answers with `renamedTo` (and `ownerCustomerRef: null`); it follows that account. `404` when nothing is recorded.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`."
+      tags:
+        - "Billing connections"
+      parameters:
+        - name: "accountRef"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/GetBillingAccountsAccountRefResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "billing:read"
+      x-scopes:
+        - "billing:read"
+        - "billing:write"
+        - "read"
+        - "full"
+        - "admin"
   "/v1/billing/connections/{id}/value-mapping":
     put:
       operationId: "putV1BillingConnectionsIdValueMapping"
@@ -35450,7 +36734,7 @@ paths:
     get:
       operationId: "getV1BillingEvents"
       summary: "List billing events"
-      description: "Payments, refunds and other billing events received from every connection, newest first. Filter with `customerRef`, or `status=ignored_by_filter` for the events a product filter or the internal-customer list set aside (recorded, never processed). `ignoredReason: \"no_referral_in_scope\"` (with `status: \"processed\"`) marks a payment on a connection limited to some programs from a customer referred only in other programs: it earned nothing.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`."
+      description: "Payments, refunds and other billing events received from every connection, newest first. Filter with `customerRef`, or `status=ignored_by_filter` for the events a product filter or the internal-customer list set aside (recorded, never processed), or `status=parked` for the refunds and disputes waiting for their payment: applied when it arrives, or dropped after 7 days with a `billing_event.expired` webhook event. `ignoredReason: \"no_referral_in_scope\"` (with `status: \"processed\"`) marks a payment on a connection limited to some programs from a customer referred only in other programs: it earned nothing.\n\n**Auth:** an API key with `billing:read`, or a session of any role.\n\n**Scopes:** `billing:read`, `billing:write`, `read`, `full`, `admin`."
       tags:
         - "Billing connections"
       parameters:
@@ -35467,6 +36751,7 @@ paths:
             enum:
               - "processed"
               - "ignored_by_filter"
+              - "parked"
         - name: "limit"
           in: "query"
           required: false
@@ -42066,7 +43351,7 @@ paths:
     post:
       operationId: "postV1SandboxSimulate"
       summary: "Simulate billing history"
-      description: "Generates deterministic billing history through the real commission pipeline, so you can see commissions flow without a provider: a new sandbox customer referred to the partner, `months` (default 3) of subscription payments at `priceMinor`, then for `scenario: \"refund\"` a half refund of the first invoice or for `churn` a cancellation. Returns the customer and what was created. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`."
+      description: "Generates deterministic billing history through the real commission pipeline, so you can see commissions flow without a provider: a new sandbox customer referred to the partner, `months` (default 3) of subscription payments at `priceMinor`, then for `scenario: \"refund\"` a half refund of the first invoice or for `churn` a cancellation. Returns the customer and what was created. `scenario: \"signup_and_pay\"` (test mode only, `409 test_mode_only` otherwise) proves the whole loop instead: a sign-up of `customerRef` (default a new `cus_sandbox_…`) referred by `partnerId` (a click on their link) or by `code` (a link or coupon code), filed through auth connection `authConnectionId` exactly as its signed `POST /v1/auth/connections/{id}/signups` would file it (auto-enroll included) or, without one, as `POST /v1/referrals/associate`; then a provider-neutral `payment.paid` of `amountMinor` (default 4900) in `currency` (default USD) through billing connection `billingConnectionId` (default the org's only active one, else `409`), run through the same pipeline as `POST /v1/sandbox/billing-fixtures`. Answers `{ scenario, ok, steps: [signup, payment], commissions }`; a step that could not succeed answers `ok: false` with `notes` saying why (sign-up not credited, auth connection paused or in another program, billing connection `awaiting_secret`, paused or limited to other programs, payment ignored, program without a commission rule) rather than an error. Audited.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`."
       tags:
         - "Developers"
       parameters:
@@ -42091,6 +43376,7 @@ paths:
                     - "subscription"
                     - "refund"
                     - "churn"
+                    - "signup_and_pay"
                 priceMinor:
                   default: 9900
                   type: "integer"
@@ -42101,12 +43387,30 @@ paths:
                   type: "integer"
                   minimum: 1
                   maximum: 24
+                code:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 64
+                authConnectionId:
+                  type: "string"
+                billingConnectionId:
+                  type: "string"
+                customerRef:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 255
+                amountMinor:
+                  type: "integer"
+                  minimum: 1
+                  maximum: 9007199254740991
+                currency:
+                  type: "string"
+                  pattern: "^[A-Za-z]{3}$"
               required:
                 - "programId"
-                - "partnerId"
       responses:
         "200":
-          description: "OK"
+          description: "The billing scenarios: what was generated. `signup_and_pay`: each step and the commission events made."
           content:
             "application/json":
               schema:
@@ -53165,7 +54469,7 @@ paths:
     get:
       operationId: "getV1AuthConnections"
       summary: "List auth connections"
-      description: "Auth-platform connections with provider, program, status, signature version and rotation state. Secrets are never returned.\n\n**Auth:** an API key with `integrations:read`, or a session of any role.\n\n**Scopes:** `integrations:read`, `integrations:write`, `connections:read`, `connections:write`, `read`, `full`, `admin`."
+      description: "Auth-platform connections with provider, program, status, signature version, rotation state and `lastSignupAt` (when it last filed a new sign-up; null when never). Secrets are never returned.\n\n**Auth:** an API key with `integrations:read`, or a session of any role.\n\n**Scopes:** `integrations:read`, `integrations:write`, `connections:read`, `connections:write`, `read`, `full`, `admin`."
       tags:
         - "Integrations"
       parameters:
@@ -53291,140 +54595,62 @@ paths:
         - "read"
         - "full"
         - "admin"
-  "/v1/auth/connections/{id}/secret":
-    put:
-      operationId: "putV1AuthConnectionsIdSecret"
-      summary: "Set a vendor-issued secret"
-      description: "For webhook connectors whose vendor issues the signing secret (Clerk, Stytch, WorkOS) or key set (Kinde's JWKS document): replaces the connection's secret. The previous one keeps verifying for 24 hours. Signed-protocol connections rotate instead. Audited.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`."
-      tags:
-        - "Integrations"
-      parameters:
-        - name: "id"
-          in: "path"
-          required: true
-          schema:
-            type: "string"
-        - $ref: "#/components/parameters/IdempotencyKey"
-        - $ref: "#/components/parameters/OrgId"
-        - $ref: "#/components/parameters/Mode"
-      requestBody:
-        required: true
-        content:
-          "application/json":
-            schema:
-              type: "object"
-              properties:
-                secret:
-                  type: "string"
-                  minLength: 8
-                  maxLength: 20000
-              required:
-                - "secret"
-            example:
-              secret: "whsec_c2VjcmV0LWZyb20tdGhlLXZlbmRvcg=="
-      responses:
-        "200":
-          description: "OK"
-          content:
-            "application/json":
-              schema:
-                $ref: "#/components/schemas/PutAuthConnectionsIdSecretResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        default:
-          description: "Any other error, in the same envelope."
-          content:
-            "application/json":
-              schema:
-                $ref: "#/components/schemas/Error"
-      security:
-        - apiKey: []
-        - session: []
-      x-required-scope: "integrations:write"
-      x-scopes:
-        - "integrations:write"
-        - "connections:write"
-        - "full"
-        - "admin"
-      x-roles:
-        - "owner"
-        - "admin"
-  "/v1/auth/connections/{id}/rotate-secret":
-    post:
-      operationId: "postV1AuthConnectionsIdRotateSecret"
-      summary: "Rotate an auth connection secret"
-      description: "Issues a new signing secret, returned once. The previous one keeps verifying for 24 hours, or until revoked.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`."
-      tags:
-        - "Integrations"
-      parameters:
-        - name: "id"
-          in: "path"
-          required: true
-          schema:
-            type: "string"
-        - $ref: "#/components/parameters/IdempotencyKey"
-        - $ref: "#/components/parameters/OrgId"
-        - $ref: "#/components/parameters/Mode"
-      responses:
-        "200":
-          description: "OK"
-          content:
-            "application/json":
-              schema:
-                $ref: "#/components/schemas/PostAuthConnectionsIdRotateSecretResponse"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-        "422":
-          $ref: "#/components/responses/UnprocessableEntity"
-        "429":
-          $ref: "#/components/responses/TooManyRequests"
-        "500":
-          $ref: "#/components/responses/InternalError"
-        default:
-          description: "Any other error, in the same envelope."
-          content:
-            "application/json":
-              schema:
-                $ref: "#/components/schemas/Error"
-      security:
-        - apiKey: []
-        - session: []
-      x-required-scope: "integrations:write"
-      x-scopes:
-        - "integrations:write"
-        - "connections:write"
-        - "full"
-        - "admin"
-      x-roles:
-        - "owner"
-        - "admin"
   "/v1/auth/connections/{id}":
+    get:
+      operationId: "getV1AuthConnectionsId"
+      summary: "Get an auth connection"
+      description: "One auth-platform connection, as in the list: provider, program, status, `allowedOrigins`, `tokenVerification` (without its secret), signature version and rotation state. Secrets are never returned. Unknown or deleted connections are 404.\n\n**Auth:** an API key with `integrations:read`, or a session of any role.\n\n**Scopes:** `integrations:read`, `integrations:write`, `connections:read`, `connections:write`, `read`, `full`, `admin`."
+      tags:
+        - "Integrations"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/AuthConnection"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "integrations:read"
+      x-scopes:
+        - "integrations:read"
+        - "integrations:write"
+        - "connections:read"
+        - "connections:write"
+        - "read"
+        - "full"
+        - "admin"
     patch:
       operationId: "patchV1AuthConnectionsId"
       summary: "Update an auth connection"
-      description: "Pauses or resumes a connection, renames it, changes `autoEnrollUsers` or the destination of auto-created links, turns `resolveBillingCustomers` on or off, or (signed-protocol connections) sets `signatureVersion`: `v2` to require request-line signatures, `v1+v2` to accept both again. `resolveBillingCustomers` (any provider, default false): a billing customer that arrives with no customerRef (no `referalli_customer_ref` metadata, no `customerRefMetadataKey` hit) in a program this connection serves (within the billing connection's `programIds`) is resolved through this connection's users: `referalli_user_id` or `<provider>_user_id` metadata naming a user it reported, else exactly one user whose current email is the customer's and verified. The billing link is recorded as metadata would record it; none or several matches record `ignoredReason: \"identity_unresolved\"` / `\"identity_ambiguous\"` on the billing event. Explicit metadata always wins. Matching uses only the org's own data. `tokenVerification` replaces the widget-session verifier (an HS256 secret is kept when `sharedSecret` is left out; `null` removes it) and `allowedOrigins` replaces the origin list.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`."
+      description: "Pauses or resumes a connection, renames it, changes `autoEnrollUsers` or the destination of auto-created links, turns `resolveBillingCustomers` on or off, or (signed-protocol connections) sets `signatureVersion`: `v2` to require request-line signatures, `v1+v2` to accept both again. `resolveBillingCustomers` (any provider, default false): a billing customer that arrives with no customerRef (no `referalli_customer_ref` metadata, no `customerRefMetadataKey` hit) in a program this connection serves (within the billing connection's `programIds`) is resolved through this connection's users: `referalli_user_id` or `<provider>_user_id` metadata naming a user it reported, else exactly one user whose current email is the customer's and verified. The billing link is recorded as metadata would record it; none or several matches record `ignoredReason: \"identity_unresolved\"` / `\"identity_ambiguous\"` on the billing event. Explicit metadata always wins. Matching uses only the org's own data. `tokenVerification` replaces the widget-session verifier (an HS256 secret is kept when `sharedSecret` is left out; `null` removes it) and `allowedOrigins` replaces the origin list. The auth platform itself can also call this path, signed with the connection secret and with only `allowedOrigins` in the body (no session), to set its origins; see `PUT /v1/auth/connections/{id}/origins`.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`."
       tags:
         - "Integrations"
       parameters:
@@ -53640,6 +54866,135 @@ paths:
       x-roles:
         - "owner"
         - "admin"
+  "/v1/auth/connections/{id}/secret":
+    put:
+      operationId: "putV1AuthConnectionsIdSecret"
+      summary: "Set a vendor-issued secret"
+      description: "For webhook connectors whose vendor issues the signing secret (Clerk, Stytch, WorkOS) or key set (Kinde's JWKS document): replaces the connection's secret. The previous one keeps verifying for 24 hours. Signed-protocol connections rotate instead. Audited.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`."
+      tags:
+        - "Integrations"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                secret:
+                  type: "string"
+                  minLength: 8
+                  maxLength: 20000
+              required:
+                - "secret"
+            example:
+              secret: "whsec_c2VjcmV0LWZyb20tdGhlLXZlbmRvcg=="
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PutAuthConnectionsIdSecretResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "integrations:write"
+      x-scopes:
+        - "integrations:write"
+        - "connections:write"
+        - "full"
+        - "admin"
+      x-roles:
+        - "owner"
+        - "admin"
+  "/v1/auth/connections/{id}/rotate-secret":
+    post:
+      operationId: "postV1AuthConnectionsIdRotateSecret"
+      summary: "Rotate an auth connection secret"
+      description: "Issues a new signing secret, returned once. The previous one keeps verifying for 24 hours, or until revoked.\n\n**Auth:** an API key with `integrations:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `integrations:write`, `connections:write`, `full`, `admin`."
+      tags:
+        - "Integrations"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Mode"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PostAuthConnectionsIdRotateSecretResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        - apiKey: []
+        - session: []
+      x-required-scope: "integrations:write"
+      x-scopes:
+        - "integrations:write"
+        - "connections:write"
+        - "full"
+        - "admin"
+      x-roles:
+        - "owner"
+        - "admin"
   "/v1/auth/connections/{id}/revoke-previous-secret":
     post:
       operationId: "postV1AuthConnectionsIdRevokePreviousSecret"
@@ -53768,6 +55123,7 @@ paths:
                   type: "object"
                   properties:
                     botScore:
+                      description: "0 (human) to 1 (certainly a bot). A value above 1 and up to 100 is read as a percentage (85 → 0.85); above 100 is refused."
                       type: "number"
                       minimum: 0
                       maximum: 1
@@ -53788,6 +55144,7 @@ paths:
                         type: "string"
                         maxLength: 120
                     score:
+                      description: "Overall risk, 0 (safe) to 1 (certainly fraudulent), compared with riskPolicy.holdRiskScore (default 0.8). A value above 1 and up to 100 (Atlas’s 0–100 scale) is read as a percentage (85 → 0.85); above 100 is refused."
                       type: "number"
                       minimum: 0
                       maximum: 1
@@ -54027,7 +55384,7 @@ paths:
     post:
       operationId: "postV1AuthConnectionsIdPing"
       summary: "Test an auth connection (signed protocol)"
-      description: "Proves the secret works: returns the connection, its program and org, the server time (to check clock skew) and `capabilities` (`{ partners: true }`: user-chosen referral codes through `/partners`). Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** a signature (see above); no API key."
+      description: "Proves the secret works: returns the connection, its program and org, the server time (to check clock skew) and `capabilities` (`{ partners: true, origins: true, accounts: true }`: user-chosen referral codes through `/partners`, setting `allowedOrigins` through `PUT …/origins` or a signed PATCH, and organization owners through `/accounts`). Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** a signature (see above); no API key."
       tags:
         - "Integrations"
       parameters:
@@ -54050,6 +55407,121 @@ paths:
             "application/json":
               schema:
                 $ref: "#/components/schemas/PostAuthConnectionsIdPingResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "423":
+          $ref: "#/components/responses/Locked"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
+  "/v1/auth/connections/{id}/origins":
+    put:
+      operationId: "putV1AuthConnectionsIdOrigins"
+      summary: "Set a connection's allowed origins (signed protocol)"
+      description: "The `origins` capability: the auth platform replaces this connection's own `allowedOrigins` (the browser origins that may call `POST /v1/widget/session`) when its app's origins change. Exact origins only (`https://app.example.com`, no path or wildcard; `http` only for localhost), at most 50; the body takes nothing else. Returns `{ id, allowedOrigins }`. Audited. A connection-signed `PATCH /v1/auth/connections/{id}` with the same body does the same. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none."
+      tags:
+        - "Integrations"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                allowedOrigins:
+                  maxItems: 50
+                  type: "array"
+                  items:
+                    type: "string"
+                    maxLength: 255
+              required:
+                - "allowedOrigins"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PutAuthConnectionsIdOriginsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "423":
+          $ref: "#/components/responses/Locked"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
+    patch:
+      operationId: "patchV1AuthConnectionsIdOrigins"
+      summary: "Set a connection's allowed origins (signed protocol, PATCH)"
+      description: "The same as `PUT /v1/auth/connections/{id}/origins`. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none."
+      tags:
+        - "Integrations"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                allowedOrigins:
+                  maxItems: 50
+                  type: "array"
+                  items:
+                    type: "string"
+                    maxLength: 255
+              required:
+                - "allowedOrigins"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PatchAuthConnectionsIdOriginsResponse"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -54325,6 +55797,73 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "423":
+          $ref: "#/components/responses/Locked"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        default:
+          description: "Any other error, in the same envelope."
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/Error"
+      security: []
+  "/v1/auth/connections/{id}/accounts":
+    post:
+      operationId: "postV1AuthConnectionsIdAccounts"
+      summary: "Set an organization's owner (signed protocol)"
+      description: "The `accounts` capability: an organization the app bills under (`accountRef`: its id in billing metadata, e.g. Atlas's `external_id`) is owned by `ownerCustomerRef` (a user the connection reports). Its payments earn for the owner's referral; send it again whenever ownership changes. When the organization's id changes, send the new id as `accountRef` with the old one as `previousAccountRef` (the owner carries over unless `ownerCustomerRef` is sent): the old id then follows the new one. When it is deleted, send `{ accountRef, deleted: true }`: it has no owner from then on, so its payments earn nothing (earned commissions stay; refunds still reverse them). Same as `PUT /v1/billing/accounts/{accountRef}/owner` and `DELETE /v1/billing/accounts/{accountRef}`; returns `{ ok, accountRef, ownerCustomerRef, previousOwnerCustomerRef, renamedFrom, deleted, changed, relinked, reprocessedPayments }`; a repeat answers `changed: false`. Publishes `billing_account.owner_changed`. Signed with the connection secret in `x-referalli-signature: t=<unix>,v1=…,v2=…` (v2 also signs the request line; once a connection has seen v2 it requires it), with a unique `x-referalli-id` per call. The legacy header names from before the rename are also accepted, for existing integrations. Calls older than 5 minutes, reused ids (`409 replay`), paused connections (`423 connection_paused`) and unknown fields (`422`) are refused.\n\n**Auth:** none."
+      tags:
+        - "Integrations"
+      parameters:
+        - name: "id"
+          in: "path"
+          required: true
+          schema:
+            type: "string"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              type: "object"
+              properties:
+                accountRef:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 256
+                ownerCustomerRef:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 256
+                previousAccountRef:
+                  type: "string"
+                  minLength: 1
+                  maxLength: 256
+                deleted:
+                  type: "boolean"
+                  const: true
+              required:
+                - "accountRef"
+      responses:
+        "200":
+          description: "OK"
+          content:
+            "application/json":
+              schema:
+                $ref: "#/components/schemas/PostAuthConnectionsIdAccountsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "423":
           $ref: "#/components/responses/Locked"
         "429":
@@ -55784,7 +57323,7 @@ paths:
     get:
       operationId: "getV1PublicProgramsHandle"
       summary: "Get a program's public page"
-      description: "What a program's public join page shows: the program and merchant names, pitch, cookie window, terms, base commission, branding and whether joining is approved at once. No authentication; only active live programs with a `publicHandle` are found.\n\n**Auth:** none."
+      description: "What a program's public join page shows: the program and merchant names, pitch, cookie window, terms, base commission, branding and whether joining is approved at once. `terms` is the program's commission terms as `GET /v1/programs/{id}/terms` gives them (the rule's base, how long it recurs, hold and `summary` in each portal locale), or null when it has no rule yet; with `?locale=` or `Accept-Language` it also names the chosen `locale` and its sentence as `text`. No authentication; only active live programs with a `publicHandle` are found.\n\n**Auth:** none."
       tags:
         - "Programs"
       parameters:
@@ -55793,6 +57332,12 @@ paths:
           required: true
           schema:
             type: "string"
+        - name: "locale"
+          in: "query"
+          required: false
+          schema:
+            type: "string"
+            maxLength: 35
       responses:
         "200":
           description: "OK"
@@ -57522,7 +59067,7 @@ paths:
     post:
       operationId: "postV1OrgsOrgIdPrivacyExecutorKey"
       summary: "Mint an executor key under a Cookie Munch partner link"
-      description: "Called by Cookie Munch, not by you (CMU-X25): mints (or rotates) this org's cm-standard-v2 executor key so Cookie Munch's `referalli` executor preset can connect without a pasted key. The request must be signed by Cookie Munch's partner key exactly like its consent deliveries: `CookieMunch-Partner-Signature: t=<unix seconds>,kid=<key id>,ed25519=<base64url>` over `<t>.<raw body>`, with the key named in `https://api.cookiemunch.net/v1/partner/jwks.json` (300 s window; each signed request and each body `nonce` works once, a replay is 409; `partner` must be `referalli` and `externalId` the org in the path). Referalli then confirms the partner link with Cookie Munch over its own partner token (`GET /v1/partner/links`): it must be `active` or `waiting_on_partner`, name this org as `externalId`, sit on a site this org registered (`PUT /v1/org/consent-partners/cookiemunch`), and match `cbid`/`linkId` when sent; otherwise 403 `no_grant`. 201 `{secret, executorUrl, contract, orgId, linkId, cbid, rotated}`: `secret` is shown once and is the bearer key for `executorUrl` (`https://referalli.com/api`, the cm-standard-v2 baseUrl: calls go to `<executorUrl>/privacy/*`), where it reaches only this org's referred customers and partners. The old key stops working at once. Audited (`privacy.executor_key_minted`).\n\n**Auth:** none."
+      description: "Called by Cookie Munch, not by you (CMU-X25): mints (or rotates) this org's cm-standard-v2 executor key, limited to `programIds` when sent so Cookie Munch's `referalli` executor preset can connect without a pasted key. The request must be signed by Cookie Munch's partner key exactly like its consent deliveries: `CookieMunch-Partner-Signature: t=<unix seconds>,kid=<key id>,ed25519=<base64url>` over `<t>.<raw body>`, with the key named in `https://api.cookiemunch.net/v1/partner/jwks.json` (300 s window; each signed request and each body `nonce` works once, a replay is 409; `partner` must be `referalli` and `externalId` the org in the path). Referalli then confirms the partner link with Cookie Munch over its own partner token (`GET /v1/partner/links`): it must be `active` or `waiting_on_partner`, name this org as `externalId`, sit on a site this org registered (`PUT /v1/org/consent-partners/cookiemunch`), and match `cbid`/`linkId` when sent; otherwise 403 `no_grant`. 201 `{secret, executorUrl, contract, orgId, linkId, cbid, rotated}`: `secret` is shown once and is the bearer key for `executorUrl` (`https://referalli.com/api`, the cm-standard-v2 baseUrl: calls go to `<executorUrl>/privacy/*`), where it reaches only this org's referred customers and partners. The old key stops working at once. Audited (`privacy.executor_key_minted`).\n\n**Auth:** none."
       tags:
         - "Inbound webhooks"
       parameters:
@@ -57568,6 +59113,15 @@ paths:
                   type: "integer"
                   minimum: -9007199254740991
                   maximum: 9007199254740991
+                programIds:
+                  description: "Limit the key to these programs of the org: it then answers only for people in them. Without it, the key reaches the whole org. Each set of programs has its own key, so minting one leaves the others working."
+                  minItems: 1
+                  maxItems: 50
+                  type: "array"
+                  items:
+                    type: "string"
+                    minLength: 1
+                    maxLength: 64
             example:
               cbid: "acme-com-9f3k"
               linkId: "pl_01JB2X9R7C"
@@ -60996,6 +62550,61 @@ webhooks:
         "200":
           description: "Received. Any 2xx acknowledges the delivery."
       security: []
+  billing_account.owner_changed:
+    post:
+      operationId: "webhookBillingAccountOwnerChanged"
+      summary: "A billing account's owner changed"
+      description: "An organization the app bills under has a new owner, a new id (`previousAccountRef` is the old one) or was deleted (`deleted`, no owner), set with `PUT /v1/billing/accounts/{accountRef}/owner`, `DELETE /v1/billing/accounts/{accountRef}` or by an auth platform. Its payments earn for `ownerCustomerRef`'s referral.\n\nPOSTed to every active webhook endpoint subscribed to `billing_account.owner_changed` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days."
+      tags:
+        - "Webhooks"
+      parameters:
+        - name: "webhook-id"
+          in: "header"
+          required: true
+          description: "The delivery id; the same on every retry and replay. Deduplicate on it."
+          schema:
+            type: "string"
+        - name: "webhook-timestamp"
+          in: "header"
+          required: true
+          description: "When this attempt was signed, in unix seconds. Reject it when more than 5 minutes from your clock."
+          schema:
+            type: "integer"
+        - name: "webhook-signature"
+          in: "header"
+          required: true
+          description: "`v1,` plus the base64 HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}`, keyed with the base64-decoded secret after `whsec_`. During a rotation, two signatures separated by a space."
+          schema:
+            type: "string"
+        - name: "x-referalli-topic"
+          in: "header"
+          required: true
+          description: "The event topic, as in the body. The legacy header names from before the rename are also sent, with identical values, for existing integrations."
+          schema:
+            type: "string"
+            const: "billing_account.owner_changed"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/BillingAccountOwnerChangedEvent"
+            example:
+              id: "evt_01JB2XH8J9K0L1M2N3P4Q5R6S7"
+              topic: "billing_account.owner_changed"
+              orgId: "org_01JB2X9P0A1B2C3D4E5F6G7H8J"
+              livemode: true
+              createdAt: "2026-10-21T15:04:05.123Z"
+              data:
+                accountRef: "org_test_1"
+                ownerCustomerRef: "cus_test_123"
+                previousOwnerCustomerRef: null
+                previousAccountRef: null
+                deleted: false
+      responses:
+        "200":
+          description: "Received. Any 2xx acknowledges the delivery."
+      security: []
   commission.earned:
     post:
       operationId: "webhookCommissionEarned"
@@ -61891,6 +63500,63 @@ webhooks:
                 billingEventId: "bev_01JB2XH8J9"
                 type: "invoice_paid"
                 customerRef: "cus_test_123"
+                currency: "usd"
+                amountMinor: 9900
+      responses:
+        "200":
+          description: "Received. Any 2xx acknowledges the delivery."
+      security: []
+  billing_event.expired:
+    post:
+      operationId: "webhookBillingEventExpired"
+      summary: "A parked refund or dispute expired"
+      description: "A refund or dispute waited 7 days for a payment that never arrived, and reversed nothing. A payment arriving later earns in full; adjust it by hand if the refund still applies.\n\nPOSTed to every active webhook endpoint subscribed to `billing_event.expired` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days."
+      tags:
+        - "Webhooks"
+      parameters:
+        - name: "webhook-id"
+          in: "header"
+          required: true
+          description: "The delivery id; the same on every retry and replay. Deduplicate on it."
+          schema:
+            type: "string"
+        - name: "webhook-timestamp"
+          in: "header"
+          required: true
+          description: "When this attempt was signed, in unix seconds. Reject it when more than 5 minutes from your clock."
+          schema:
+            type: "integer"
+        - name: "webhook-signature"
+          in: "header"
+          required: true
+          description: "`v1,` plus the base64 HMAC-SHA256 of `{webhook-id}.{webhook-timestamp}.{raw body}`, keyed with the base64-decoded secret after `whsec_`. During a rotation, two signatures separated by a space."
+          schema:
+            type: "string"
+        - name: "x-referalli-topic"
+          in: "header"
+          required: true
+          description: "The event topic, as in the body. The legacy header names from before the rename are also sent, with identical values, for existing integrations."
+          schema:
+            type: "string"
+            const: "billing_event.expired"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              $ref: "#/components/schemas/BillingEventExpiredEvent"
+            example:
+              id: "evt_01JB2XH8J9K0L1M2N3P4Q5R6S7"
+              topic: "billing_event.expired"
+              orgId: "org_01JB2X9P0A1B2C3D4E5F6G7H8J"
+              livemode: true
+              createdAt: "2026-10-21T15:04:05.123Z"
+              data:
+                billingEventId: "bev_01JB2XH8J9"
+                type: "refund"
+                customerRef: "cus_test_123"
+                invoiceRef: "in_test_123"
+                chargeRef: null
                 currency: "usd"
                 amountMinor: 9900
       responses:
