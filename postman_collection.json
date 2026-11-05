@@ -6913,6 +6913,11 @@
                   "disabled": true
                 },
                 {
+                  "key": "customerRef",
+                  "value": "",
+                  "disabled": true
+                },
+                {
                   "key": "limit",
                   "value": "50",
                   "description": "Items per page, 1 to 100 (default 50). From API version 2026-11-01; ignored under 2026-10-21, where lists are a capped plain array.",
