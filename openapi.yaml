@@ -1,8 +1,8 @@
 openapi: "3.1.0"
 info:
   title: "Referalli API"
-  version: "2026-11-01"
-  description: "Attribution-first affiliate and referral platform. Everything the dashboards do, this API does.\n\n## Authentication\nServer-side, send an API key: `Authorization: Bearer rk_live_…` (or `rk_test_…` for test mode). A key holds scopes (`full`, `read`, or per resource such as `referrals:write`); each operation names the scope it needs. Browser calls from your own front end use a publishable key (`rk_pub_…`, limited to `programs:read` and `events:write` from allowed origins). The dashboards and the partner portal use session cookies.\n\n## Versions\nEvery request runs under an API version: the `referalli-version` header (the name from before the rename is still accepted), else the key's pinned version, else 2026-10-21. The latest is 2026-11-01; list operations return the paginated envelope `{ object: \"list\", data, has_more, next_cursor }` from 2026-11-01. A version stays supported for at least 12 months after the next one ships. Deprecated versions are announced in the changelog and in a `referalli-deprecation` response header at least 6 months before they stop being served. API keys keep their pinned version until you change it.\n\n## Test mode\nTest keys, or `referalli-mode: test` on a session, act on the org's separate test data.\n\n## Errors\nEvery error is `{ \"error\": { \"code\", \"message\", \"details\"?, \"requestId\"?, \"docs_url\" } }`; branch on `code`. Writes accept an `Idempotency-Key` header for safe retries.\n\n## Webhooks\nEach event topic and its payload is in the `webhooks` section of this document."
+  version: "2026-11-05"
+  description: "Attribution-first affiliate and referral platform. Everything the dashboards do, this API does.\n\n## Authentication\nServer-side, send an API key: `Authorization: Bearer rk_live_…` (or `rk_test_…` for test mode). A key holds scopes (`full`, `read`, or per resource such as `referrals:write`); each operation names the scope it needs. Browser calls from your own front end use a publishable key (`rk_pub_…`, limited to `programs:read` and `events:write` from allowed origins). The dashboards and the partner portal use session cookies.\n\n## Versions\nEvery request runs under an API version: the `referalli-version` header (the name from before the rename is still accepted), else the key's pinned version, else 2026-10-21. The latest is 2026-11-05; list operations return the paginated envelope `{ object: \"list\", data, has_more, next_cursor }` from 2026-11-01. A version stays supported for at least 12 months after the next one ships. Deprecated versions are announced in the changelog and in a `referalli-deprecation` response header at least 6 months before they stop being served. API keys keep their pinned version until you change it.\n\n## Test mode\nTest keys, or `referalli-mode: test` on a session, act on the org's separate test data.\n\n## Errors\nEvery error is `{ \"error\": { \"code\", \"message\", \"details\"?, \"requestId\"?, \"docs_url\" } }`; branch on `code`. Writes accept an `Idempotency-Key` header for safe retries.\n\n## Webhooks\nEach event topic and its payload is in the `webhooks` section of this document."
   termsOfService: "https://referalli.com/legal"
   contact:
     name: "Referalli"
@@ -24483,12 +24483,13 @@ components:
       name: "referalli-version"
       in: "header"
       required: false
-      description: "The API version to run the request under (2026-10-21, 2026-11-01). Default: the API key's pinned version, else 2026-10-21. The header name from before the rename is still accepted; this name wins when both are sent."
+      description: "The API version to run the request under (2026-10-21, 2026-11-01, 2026-11-05). Default: the API key's pinned version, else 2026-10-21. The header name from before the rename is still accepted; this name wins when both are sent."
       schema:
         type: "string"
         enum:
           - "2026-10-21"
           - "2026-11-01"
+          - "2026-11-05"
     Mode:
       name: "referalli-mode"
       in: "header"
