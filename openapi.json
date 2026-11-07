@@ -2155,7 +2155,7 @@
                 "type": "null"
               }
             ],
-            "description": "A payment above this is held for release. null: the default, 1,000,000,000 minor units."
+            "description": "A payment above this, in approximate US cents (other currencies are converted at a rough fixed rate), is held for release. null: the default, 1,000,000,000 ($10M)."
           },
           "filter": {
             "anyOf": [
@@ -2405,7 +2405,7 @@
               "parked",
               "held"
             ],
-            "description": "held: a payment over the connection limit or dated in the future; it earns nothing until released with POST /v1/billing/events/{id}/release. ignored_by_filter: recorded, never processed (product filter or internal customer). parked: a refund or dispute waiting up to 7 days for its payment."
+            "description": "held: a payment over the connection limit (in approximate US cents), dated in the future, or in a currency outside ISO 4217; it earns nothing until released with POST /v1/billing/events/{id}/release. ignored_by_filter: recorded, never processed (product filter or internal customer). parked: a refund or dispute waiting up to 7 days for its payment."
           },
           "parkedUntil": {
             "anyOf": [
@@ -2431,7 +2431,8 @@
                   "identity_unresolved",
                   "identity_ambiguous",
                   "amount_over_limit",
-                  "occurred_in_future"
+                  "occurred_in_future",
+                  "unknown_currency"
                 ]
               },
               {
@@ -9765,7 +9766,8 @@
             "type": "string",
             "enum": [
               "amount_over_limit",
-              "occurred_in_future"
+              "occurred_in_future",
+              "unknown_currency"
             ]
           },
           "customerRef": {
@@ -9796,7 +9798,7 @@
           "currency",
           "amountMinor"
         ],
-        "description": "`data` of a `billing_event.held` event: A payment over its connection's `maxAmountMinor`, or dated more than a day ahead, earned nothing and waits for POST /v1/billing/events/{id}/release."
+        "description": "`data` of a `billing_event.held` event: A payment over its connection's `maxAmountMinor` (approximate US cents), dated more than a day ahead, or in a currency that isn't ISO 4217, earned nothing and waits for POST /v1/billing/events/{id}/release."
       },
       "BillingEventHeldEvent": {
         "type": "object",
@@ -16508,7 +16510,8 @@
             "type": "string",
             "enum": [
               "amount_over_limit",
-              "occurred_in_future"
+              "occurred_in_future",
+              "unknown_currency"
             ]
           }
         },
@@ -56033,7 +56036,7 @@
       "post": {
         "operationId": "postV1BillingEventsIdRelease",
         "summary": "Release a held payment",
-        "description": "A payment over its connection's `maxAmountMinor` (default 1,000,000,000 minor units), or dated more than a day ahead, is recorded with `status: \"held\"` and earns nothing. Releasing it says it is real: it earns as it would have on arrival, and any refund that waited for it applies.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
+        "description": "A payment over its connection's `maxAmountMinor` (approximate US cents, default 1,000,000,000 = $10M; other currencies are converted at a rough fixed rate), dated more than a day ahead, or in a currency that isn't ISO 4217, is recorded with `status: \"held\"` and earns nothing. Releasing it says it is real: it earns as it would have on arrival, and any refund that waited for it applies.\n\n**Auth:** an API key with `billing:write`, or a session with role `owner`, `admin`.\n\n**Scopes:** `billing:write`, `full`, `admin`.",
         "tags": [
           "Billing connections"
         ],
@@ -98058,7 +98061,7 @@
       "post": {
         "operationId": "webhookBillingEventHeld",
         "summary": "A payment was held for review",
-        "description": "A payment over its connection's `maxAmountMinor`, or dated more than a day ahead, earned nothing and waits for POST /v1/billing/events/{id}/release.\n\nPOSTed to every active webhook endpoint subscribed to `billing_event.held` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days.",
+        "description": "A payment over its connection's `maxAmountMinor` (approximate US cents), dated more than a day ahead, or in a currency that isn't ISO 4217, earned nothing and waits for POST /v1/billing/events/{id}/release.\n\nPOSTed to every active webhook endpoint subscribed to `billing_event.held` (or `*`), signed the Standard Webhooks way. Answer any 2xx within 15 seconds; anything else is retried with backoff for 3 days.",
         "tags": [
           "Webhooks"
         ],
